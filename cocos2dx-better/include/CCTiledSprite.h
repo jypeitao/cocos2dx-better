@@ -28,7 +28,7 @@
 
 NS_CC_BEGIN
 
-class CCTextureAtlasEx;
+class CBTextureAtlas;
 
 /**
  * A node which can tile a texture in vertical and horizontal direction.
@@ -42,7 +42,7 @@ class CCTextureAtlasEx;
  * When use texture in an atlas, you should add 1 pixel Extrude. TexturePacker
  * supports Extrude option.
  */
-class CC_DLL CCTiledSprite : public CCNodeRGBA, public CCBlendProtocol {
+class CC_DLL CCTiledSprite : public CCSprite {
 private:
 	/// base sprite
 	CCSprite* m_sprite;
@@ -51,7 +51,7 @@ private:
 	bool m_dirty;
 	
 	/// atlas
-	CCTextureAtlasEx* m_atlas;
+	CBTextureAtlas* m_atlas;
 	
 private:
 	/// update atlas
@@ -67,10 +67,10 @@ public:
 	static CCTiledSprite* createWithSpriteFrame(CCSpriteFrame* frame);
 	static CCTiledSprite* createWithSprite(CCSprite* sprite);
 	
+    virtual bool initWithTexture(CCTexture2D* pTexture, const CCRect& rect, bool rotated);
 	virtual void setOpacity(GLubyte opacity);
-    inline void setBlendFunc(ccBlendFunc blendFunc) { m_sprite->setBlendFunc(blendFunc); }
-    inline ccBlendFunc getBlendFunc(void) { return m_sprite->getBlendFunc(); }
-	
+	virtual void setDisplayFrame(CCSpriteFrame *pNewFrame);
+    
 	/// @see CCNode::draw
 	virtual void draw();
 	
@@ -82,9 +82,6 @@ public:
 
 	/// set width
 	virtual void setWidth(float w);
-	
-	/// get internal sprite
-	CCSprite* getSprite() { return m_sprite; }
 };
 
 NS_CC_END

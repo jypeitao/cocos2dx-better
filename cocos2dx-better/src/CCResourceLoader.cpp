@@ -24,9 +24,12 @@
 #include "CCResourceLoader.h"
 #include "SimpleAudioEngine.h"
 #include "CCArmatureDataManager.h"
-
+#include "CCUtils.h"
+ 
 using namespace CocosDenshion;
 USING_NS_CC_EXT;
+
+static CCArray sActiveLoaders;
 
 NS_CC_BEGIN
 
@@ -43,19 +46,67 @@ void CCResourceLoader::ArmatureTask::load() {
 }
 
 CCResourceLoader::CCResourceLoader(CCResourceLoaderListener* listener) :
-		m_listener(listener),
-		m_delay(0),
-		m_remainingIdle(0),
-        m_nextLoad(0) {
+m_listener(listener),
+m_delay(0),
+m_remainingIdle(0),
+m_nextLoad(0),
+m_loading(false) {
+    // just add it to an array, but not hold it
+    sActiveLoaders.addObject(this);
+    release();
 }
 
 CCResourceLoader::~CCResourceLoader() {
     for(LoadTaskPtrList::iterator iter = m_loadTaskList.begin(); iter != m_loadTaskList.end(); iter++) {
         delete *iter;
     }
+    sActiveLoaders.removeObject(this, false);
 }
 
-unsigned char* CCResourceLoader::loadRaw(const string& name, unsigned long* size, DECRYPT_FUNC decFunc) {
+void CCResourceLoader::abortAll() {
+    CCArray tmp;
+    tmp.addObjectsFromArray(&sActiveLoaders);
+    CCObject* obj;
+    CCARRAY_FOREACH(&sActiveLoaders, obj) {
+        CCResourceLoader* loader = (CCResourceLoader*)obj;
+        loader->abort();
+    }
+}
+
+void CCResourceLoader::unloadImages(const string& tex) {
+    CCTextureCache::sharedTextureCache()->removeTextureForKey(tex.c_str());
+}
+
+void CCResourceLoader::unloadImages(const string& texPattern, int start, int end) {
+    char buf[512];
+    for(int i = start; i <= end; i++) {
+        sprintf(buf, texPattern.c_str(), i);
+        CCTextureCache::sharedTextureCache()->removeTextureForKey(buf);
+    }
+}
+
+void CCResourceLoader::unloadSpriteFrames(const string& plistPattern, const string& texPattern, int start, int end) {
+    char buf[512];
+    for(int i = start; i <= end; i++) {
+        sprintf(buf, plistPattern.c_str(), i);
+        CCSpriteFrameCache::sharedSpriteFrameCache()->removeSpriteFramesFromFile(buf);
+        sprintf(buf, texPattern.c_str(), i);
+        CCTextureCache::sharedTextureCache()->removeTextureForKey(buf);
+    }
+}
+
+void CCResourceLoader::unloadArmatures(string plistPattern, string texPattern, int start, int end, string config) {
+    CCArmatureDataManager::sharedArmatureDataManager()->removeArmatureFileInfo(config.c_str());
+    char buf[512];
+    for(int i = start; i <= end; i++) {
+        sprintf(buf, plistPattern.c_str(), i);
+        CCSpriteFrameCache::sharedSpriteFrameCache()->removeSpriteFramesFromFile(buf);
+        sprintf(buf, texPattern.c_str(), i);
+        CCTextureCache::sharedTextureCache()->removeTextureForKey(buf);
+    }
+}
+
+unsigned char* CCResourceLoader::loadRaw(const string& name, unsigned long* size, CC_DECRYPT_FUNC decFunc) {
     // load encryptd data
 	unsigned long len;
 	char* data = (char*)CCFileUtils::sharedFileUtils()->getFileData(name.c_str(), "rb", &len);
@@ -82,7 +133,14 @@ unsigned char* CCResourceLoader::loadRaw(const string& name, unsigned long* size
     return (unsigned char*)dec;
 }
 
-char* CCResourceLoader::loadCString(const string& name, DECRYPT_FUNC decFunc) {
+string CCResourceLoader::loadString(const string& name, CC_DECRYPT_FUNC decFunc) {
+    char* buf = loadCString(name, decFunc);
+    string ret = buf;
+    free(buf);
+    return ret;
+}
+
+char* CCResourceLoader::loadCString(const string& name, CC_DECRYPT_FUNC decFunc) {
     // load encryptd data
 	unsigned long len;
 	char* data = (char*)CCFileUtils::sharedFileUtils()->getFileData(name.c_str(), "rb", &len);
@@ -111,7 +169,7 @@ char* CCResourceLoader::loadCString(const string& name, DECRYPT_FUNC decFunc) {
     return ret;
 }
 
-void CCResourceLoader::loadImage(const string& name, DECRYPT_FUNC decFunc) {
+void CCResourceLoader::loadImage(const string& name, CC_DECRYPT_FUNC decFunc) {
 	// load encryptd data
 	unsigned long len;
 	char* data = (char*)CCFileUtils::sharedFileUtils()->getFileData(name.c_str(), "rb", &len);
@@ -136,7 +194,7 @@ void CCResourceLoader::loadImage(const string& name, DECRYPT_FUNC decFunc) {
 	free(data);
 }
 
-void CCResourceLoader::loadZwoptex(const string& plistName, const string& texName, DECRYPT_FUNC decFunc) {
+void CCResourceLoader::loadZwoptex(const string& plistName, const string& texName, CC_DECRYPT_FUNC decFunc) {
 	// load encryptd data
 	unsigned long len;
 	char* data = (char*)CCFileUtils::sharedFileUtils()->getFileData(texName.c_str(), "rb", &len);
@@ -165,8 +223,33 @@ void CCResourceLoader::loadZwoptex(const string& plistName, const string& texNam
 }
 
 void CCResourceLoader::run() {
+    if(m_loading)
+        return;
+    m_loading = true;
+    
 	CCScheduler* scheduler = CCDirector::sharedDirector()->getScheduler();
 	scheduler->scheduleSelector(schedule_selector(CCResourceLoader::doLoad), this, 0, kCCRepeatForever, m_delay, false);
+}
+
+void CCResourceLoader::runInBlockMode() {
+    m_loading = true;
+    for(LoadTaskPtrList::iterator iter = m_loadTaskList.begin(); iter != m_loadTaskList.end(); iter++) {
+        LoadTask* lp = *iter;
+        lp->load();
+        if(m_listener)
+            m_listener->onResourceLoadingProgress(m_nextLoad * 100 / m_loadTaskList.size(), 0);
+    }
+    m_loading = false;
+}
+
+void CCResourceLoader::abort() {
+    if(!m_loading)
+        return;
+    m_loading = false;
+    
+    CCScheduler* scheduler = CCDirector::sharedDirector()->getScheduler();
+    scheduler->unscheduleSelector(schedule_selector(CCResourceLoader::doLoad), this);
+    autorelease();
 }
 
 void CCResourceLoader::addAndroidStringTask(const string& lan, const string& path, bool merge) {
@@ -184,7 +267,7 @@ void CCResourceLoader::addImageTask(const string& name, float idle) {
     addLoadTask(t);
 }
 
-void CCResourceLoader::addImageTask(const string& name, DECRYPT_FUNC decFunc, float idle) {
+void CCResourceLoader::addImageTask(const string& name, CC_DECRYPT_FUNC decFunc, float idle) {
 	EncryptedImageLoadTask* t = new EncryptedImageLoadTask();
 	t->idle = idle;
 	t->name = name;
@@ -199,7 +282,7 @@ void CCResourceLoader::addBMFontTask(const string& fntFile, float idle) {
     addLoadTask(t);
 }
 
-void CCResourceLoader::addBMFontTask(const string& fntFile, DECRYPT_FUNC decFunc, float idle) {
+void CCResourceLoader::addBMFontTask(const string& fntFile, CC_DECRYPT_FUNC decFunc, float idle) {
     EncryptedBMFontLoadTask* t = new EncryptedBMFontLoadTask();
     t->idle = idle;
     t->name = fntFile;
@@ -222,7 +305,7 @@ void CCResourceLoader::addZwoptexTask(const string& pattern, int start, int end,
 	}
 }
 
-void CCResourceLoader::addZwoptexTask(const string& plistName, const string& texName, DECRYPT_FUNC decFunc, float idle) {
+void CCResourceLoader::addZwoptexTask(const string& plistName, const string& texName, CC_DECRYPT_FUNC decFunc, float idle) {
 	EncryptedZwoptexLoadTask* t = new EncryptedZwoptexLoadTask();
 	t->idle = idle;
 	t->name = plistName;
@@ -231,7 +314,7 @@ void CCResourceLoader::addZwoptexTask(const string& plistName, const string& tex
 	addLoadTask(t);
 }
 
-void CCResourceLoader::addZwoptexTask(const string& plistPattern, const string& texPattern, int start, int end, DECRYPT_FUNC decFunc, float idle) {
+void CCResourceLoader::addZwoptexTask(const string& plistPattern, const string& texPattern, int start, int end, CC_DECRYPT_FUNC decFunc, float idle) {
 	char buf1[512], buf2[512];
 	for(int i = start; i <= end; i++) {
 		sprintf(buf1, plistPattern.c_str(), i);
@@ -264,21 +347,82 @@ void CCResourceLoader::addZwoptexAnimTask(const string& name,
                                           const string& pattern,
                                           int startIndex,
                                           int endIndex,
-                                          const CCArray& delays,
+                                          const string& delayString,
                                           bool restoreOriginalFrame,
                                           float idle) {
     ZwoptexAnimLoadTask2* t = new ZwoptexAnimLoadTask2();
-	t->name = name;
+    t->name = name;
     t->restoreOriginalFrame = restoreOriginalFrame;
     t->idle = idle;
     
     char buf[256];
-	for(int i = startIndex; i <= endIndex; i++) {
-		sprintf(buf, pattern.c_str(), i);
-		t->frames.push_back(buf);
-	}
+    for(int i = startIndex; i <= endIndex; i++) {
+        sprintf(buf, pattern.c_str(), i);
+        t->frames.push_back(buf);
+    }
     
     CCObject* obj;
+    const CCArray& delays = CCUtils::arrayFromString(delayString);
+    CCARRAY_FOREACH(&delays, obj) {
+        CCFloat* f = (CCFloat*)obj;
+        t->durations.push_back(f->getValue());
+    }
+    
+    addLoadTask(t);
+}
+
+void CCResourceLoader::addZwoptexAnimTask(const string& name,
+                                          const string& pattern,
+                                          const string& indicesString,
+                                          float delay,
+                                          bool restoreOriginalFrame,
+                                          float idle) {
+    // task
+    ZwoptexAnimLoadTask2* t = new ZwoptexAnimLoadTask2();
+    t->name = name;
+    t->restoreOriginalFrame = restoreOriginalFrame;
+    t->idle = idle;
+    
+    // frame names
+    char buf[256];
+    const CCArray& indices = CCUtils::arrayFromString(indicesString);
+    CCObject* obj;
+    CCARRAY_FOREACH(&indices, obj) {
+        sprintf(buf, pattern.c_str(), (int)((CCFloat*)obj)->getValue());
+        t->frames.push_back(buf);
+    }
+    
+    // delay
+    for(int i = 0; i < indices.count(); i++) {
+        t->durations.push_back(delay);
+    }
+    
+    addLoadTask(t);
+}
+
+void CCResourceLoader::addZwoptexAnimTask(const string& name,
+                                          const string& pattern,
+                                          const string& indicesString,
+                                          const string& delayString,
+                                          bool restoreOriginalFrame,
+                                          float idle) {
+    // task
+    ZwoptexAnimLoadTask2* t = new ZwoptexAnimLoadTask2();
+    t->name = name;
+    t->restoreOriginalFrame = restoreOriginalFrame;
+    t->idle = idle;
+    
+    // frame names
+    char buf[256];
+    const CCArray& indices = CCUtils::arrayFromString(indicesString);
+    CCObject* obj;
+    CCARRAY_FOREACH(&indices, obj) {
+        sprintf(buf, pattern.c_str(), (int)((CCFloat*)obj)->getValue());
+        t->frames.push_back(buf);
+    }
+    
+    // delays
+    const CCArray& delays = CCUtils::arrayFromString(delayString);
     CCARRAY_FOREACH(&delays, obj) {
         CCFloat* f = (CCFloat*)obj;
         t->durations.push_back(f->getValue());
@@ -299,6 +443,13 @@ void CCResourceLoader::addCDMusicTask(const string& name, float idle) {
 	t->idle = idle;
 	t->name = name;
 	addLoadTask(t);
+}
+
+void CCResourceLoader::addCustomTask(CCCallFunc* func) {
+    CustomTask* t = new CustomTask();
+    t->func = func;
+    CC_SAFE_RETAIN(t->func);
+    addLoadTask(t);
 }
 
 void CCResourceLoader::addZwoptexAnimTask(const string& name,
@@ -334,10 +485,22 @@ void CCResourceLoader::addArmatureTask(string config, float idle) {
     addLoadTask(t);
 }
 
-void CCResourceLoader::addArmatureTask(string plist, string tex, string config, DECRYPT_FUNC func, float idle) {
+void CCResourceLoader::addArmatureTask(string plist, string tex, string config, CC_DECRYPT_FUNC func, float idle) {
     if(!plist.empty() && !tex.empty()) {
         addZwoptexTask(plist, tex, func);
     }
+    
+    if(!config.empty())
+        addArmatureTask(config);
+}
+
+void CCResourceLoader::addArmatureTask(string plistPattern, string texPattern, int start, int end, string config, CC_DECRYPT_FUNC func, float idle) {
+    char buf1[512], buf2[512];
+	for(int i = start; i <= end; i++) {
+		sprintf(buf1, plistPattern.c_str(), i);
+		sprintf(buf2, texPattern.c_str(), i);
+		addZwoptexTask(buf1, buf2, func, idle);
+	}
     
     if(!config.empty())
         addArmatureTask(config);
@@ -351,12 +514,15 @@ void CCResourceLoader::doLoad(float delta) {
     if(m_remainingIdle > 0) {
         m_remainingIdle -= delta;
     } else if(m_loadTaskList.size() <= m_nextLoad) {
+        if(m_loading) {
+            m_loading = false;
+            CCScheduler* scheduler = CCDirector::sharedDirector()->getScheduler();
+            scheduler->unscheduleSelector(schedule_selector(CCResourceLoader::doLoad), this);
+            autorelease();
+        }
+        
         if(m_listener)
             m_listener->onResourceLoadingDone();
-        
-        CCScheduler* scheduler = CCDirector::sharedDirector()->getScheduler();
-        scheduler->unscheduleSelector(schedule_selector(CCResourceLoader::doLoad), this);
-        autorelease();
     } else {
         LoadTask* lp = m_loadTaskList.at(m_nextLoad++);
         m_remainingIdle = lp->idle;

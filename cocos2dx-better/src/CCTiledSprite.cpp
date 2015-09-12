@@ -22,7 +22,7 @@
  THE SOFTWARE.
  ****************************************************************************/
 #include "CCTiledSprite.h"
-#include "CCTextureAtlasEx.h"
+#include "CBTextureAtlas.h"
 
 NS_CC_BEGIN
 
@@ -37,7 +37,7 @@ m_atlas(NULL) {
 	CC_SAFE_RETAIN(m_sprite);
 			
 	// atlas
-	m_atlas = CCTextureAtlasEx::createWithTexture(m_sprite->getTexture(), kDefaultSpriteBatchCapacity);
+	m_atlas = CBTextureAtlas::createWithTexture(m_sprite->getTexture(), kDefaultSpriteBatchCapacity);
 	CC_SAFE_RETAIN(m_atlas);
 			
 	// shader program
@@ -70,16 +70,28 @@ CCTiledSprite* CCTiledSprite::createWithSpriteFrame(CCSpriteFrame* frame) {
 
 CCTiledSprite* CCTiledSprite::createWithSprite(CCSprite* sprite) {
 	CCTiledSprite* s = new CCTiledSprite(sprite);
-	return (CCTiledSprite*)s->autorelease();
+    if(s->initWithTexture(sprite->getTexture(), sprite->getTextureRect(), sprite->isTextureRectRotated())) {
+        return (CCTiledSprite*)s->autorelease();
+    }
+	CC_SAFE_RELEASE(s);
+    return NULL;
+}
+
+bool CCTiledSprite::initWithTexture(CCTexture2D *pTexture, const CCRect& rect, bool rotated) {
+    if(!CCSprite::initWithTexture(pTexture, rect, rotated)) {
+        return false;
+    }
+    
+    return true;
 }
 
 void CCTiledSprite::setContentSize(const CCSize& contentSize) {
-	CCNodeRGBA::setContentSize(contentSize);
+	CCSprite::setContentSize(contentSize);
 	m_dirty = true;
 }
 
 void CCTiledSprite::setOpacity(GLubyte opacity) {
-	m_sprite->setOpacity(opacity);
+    CCSprite::setOpacity(opacity);
 	m_dirty = true;
 }
 
@@ -93,6 +105,16 @@ void CCTiledSprite::setWidth(float w) {
 	CCSize size = getContentSize();
 	size.width = w;
 	setContentSize(size);
+}
+
+void CCTiledSprite::setDisplayFrame(CCSpriteFrame *pNewFrame) {
+    CCSize oldSize = getContentSize();
+    CCSprite::setDisplayFrame(pNewFrame);
+    m_sprite->setDisplayFrame(pNewFrame);
+    if(m_sprite->getTexture() != m_atlas->getTexture()) {
+        m_atlas->setTexture(m_sprite->getTexture());
+    }
+    setContentSize(oldSize);
 }
 
 void CCTiledSprite::draw() {
@@ -109,8 +131,7 @@ void CCTiledSprite::draw() {
     CC_NODE_DRAW_SETUP();
 	
 	// blend func
-	ccBlendFunc bf = m_sprite->getBlendFunc();
-    ccGLBlendFunc(bf.src, bf.dst);
+    ccGLBlendFunc(m_sBlendFunc.src, m_sBlendFunc.dst);
 	
     // draw
 	if(m_atlas)

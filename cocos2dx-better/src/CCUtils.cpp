@@ -22,21 +22,19 @@
  THE SOFTWARE.
  ****************************************************************************/
 #include "CCUtils.h"
+#include "cocos2d-better.h"
+#include "entities.h"
+#include "CCLocale.h"
 #include "CCMoreMacros.h"
-#include "CCMD5.h"
 #include "CCImage_richlabel.h"
-#if CC_TARGET_PLATFORM == CC_PLATFORM_IOS
-    #include <sys/sysctl.h>
-    #import <MediaPlayer/MediaPlayer.h>
-#elif CC_TARGET_PLATFORM == CC_PLATFORM_MAC
-    #include <sys/sysctl.h>
-#elif CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID
-	#include "JniHelper.h"
-#endif
+#include "CCPinyinUtils.h"
+#include "cocos-ext.h"
+
+USING_NS_CC_EXT;
+using namespace cocos2d::gui;
 
 NS_CC_BEGIN
 
-CCUtils::StringList CCUtils::s_tmpStringList;
 CCArray CCUtils::s_tmpArray;
 
 unsigned char CCUtils::UnitScalarToByte(float x) {
@@ -91,6 +89,14 @@ bool CCUtils::endsWith(const string& s, const string& sub) {
     return s.rfind(sub) == s.length() - sub.length();
 }
 
+void CCUtils::removeChar(string& s, char c) {
+    for(string::iterator it = s.begin(); it != s.end(); it++) {
+        if(*it == c) {
+            s.erase(it);
+        }
+    }
+}
+
 void CCUtils::replaceChar(string& s, char c, char sub) {
     size_t len = s.length();
 	char* buf = new char[len + 1];
@@ -104,6 +110,31 @@ void CCUtils::replaceChar(string& s, char c, char sub) {
     
     s.copy(buf, len);
     delete buf;
+}
+
+string CCUtils::replace(string& s, const string& c, const string& sub) {
+    string ret = s;
+    size_t pos = ret.length();
+    while(true)   {
+        if((pos = ret.rfind(c, pos)) != string::npos)
+            ret = ret.replace(pos, c.length(), sub);
+        else
+            break;
+    }
+    
+    return ret;
+}
+
+string CCUtils::decodeHtmlEntities(const string& src) {
+	char* dest = (char*)calloc(src.length() + 1, sizeof(char));
+	decode_html_entities_utf8(dest, src.c_str());
+	string decoded = string(dest);
+	free(dest);
+	return decoded;
+}
+
+string CCUtils::getPinyin(const string& s) {
+    return CCPinyinUtils::chs2Pinyin(s);
 }
 
 int CCUtils::getNumDigits(int num) {
@@ -120,8 +151,8 @@ ssize_t CCUtils::lastDotIndex(const string& path) {
 	if(path.empty())
 		return -1;
     
-	size_t len = path.length();
-	for(int i = len - 1; i >= 0; i--) {
+	ssize_t len = path.length();
+	for(ssize_t i = len - 1; i >= 0; i--) {
 		if(path[i] == '.')
 			return i;
 	}
@@ -270,49 +301,16 @@ string CCUtils::deletePathExtension(const string& path) {
 	}
 }
 
-bool CCUtils::deleteFile(string path) {
-#if CC_TARGET_PLATFORM == CC_PLATFORM_IOS || CC_TARGET_PLATFORM == CC_PLATFORM_MAC
-	string mappedPath = mapLocalPath(path);
-	NSString* p = [NSString stringWithFormat:@"%s", mappedPath.c_str()];
-	NSFileManager* fm = [NSFileManager defaultManager];
-	NSError* error = nil;
-	[fm removeItemAtPath:p error:&error];
-	return error == nil;
-#elif CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID
-	return unlink(path.c_str()) == 0;
-#elif CC_TARGET_PLATFORM == CC_PLATFORM_WIN32
-	string mappedPath = mapLocalPath(path);
-	return DeleteFile(mappedPath.c_str()) != 0;
-#else
-	CCLOGERROR("CCUtils::mapLocalPath is not implemented for this platform, please finish it");
-	return false;
-#endif
-}
-
-string CCUtils::mapLocalPath(string path) {
-#if CC_TARGET_PLATFORM == CC_PLATFORM_IOS || CC_TARGET_PLATFORM == CC_PLATFORM_MAC
-	if(CCFileUtils::sharedFileUtils()->isAbsolutePath(path)) {
-		NSString* nsPath = [NSString stringWithFormat:@"~/Documents/%s", path.c_str()];
-		nsPath = [nsPath stringByExpandingTildeInPath];
-		return [nsPath cStringUsingEncoding:NSUTF8StringEncoding];
+string CCUtils::getPathExtension(const string& path) {
+	ssize_t end = lastDotIndex(path);
+	if(end >= 0) {
+		return path.substr(end);
 	} else {
-		NSBundle* bundle = [NSBundle mainBundle];
-		NSString* relativePath = [NSString stringWithFormat:@"%s", path.c_str()];
-		NSString* ext = [relativePath pathExtension];
-		NSString* filename = [relativePath lastPathComponent];
-		NSString* filenameWithoutExt = [filename stringByDeletingPathExtension];
-		NSString* dir = [relativePath stringByDeletingLastPathComponent];
-		NSString* path = [bundle pathForResource:filenameWithoutExt ofType:ext inDirectory:dir];
-		return [path cStringUsingEncoding:NSUTF8StringEncoding];
+		return "";
 	}
-#elif CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID
-	return path;
-#else
-	CCLOGERROR("CCUtils::mapLocalPath is not implemented for this platform, please finish it");
-#endif
 }
 
-string CCUtils::getParentPath(string path) {
+string CCUtils::getParentPath(const string& path) {
 	if(path.empty())
 		return "";
 	
@@ -325,7 +323,7 @@ string CCUtils::getParentPath(string path) {
 		return path.substr(0, slash);
 }
 
-bool CCUtils::createIntermediateFolders(string path) {
+bool CCUtils::createIntermediateFolders(const string& path) {
 	string parent = getParentPath(path);
 	bool exist = isPathExistent(parent);
 	bool success = true;
@@ -336,78 +334,6 @@ bool CCUtils::createIntermediateFolders(string path) {
 	
 	// return success flag
 	return success;
-}
-
-bool CCUtils::createFolder(string path) {
-#if CC_TARGET_PLATFORM == CC_PLATFORM_IOS || CC_TARGET_PLATFORM == CC_PLATFORM_MAC
-	string mappedPath = mapLocalPath(path);
-	NSString* nsPath = [NSString stringWithFormat:@"%s", mappedPath.c_str()];
-	NSFileManager* fm = [NSFileManager defaultManager];
-	return [fm createDirectoryAtPath:nsPath withIntermediateDirectories:YES attributes:NULL error:NULL];
-#elif CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID
-	return mkdir(path.c_str(), S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH) == 0;
-#elif CC_TARGET_PLATFORM == CC_PLATFORM_WIN32
-	string mappedPath = mapLocalPath(path);
-	return CreateDirectory(mappedPath.c_str(), NULL) != 0;
-#else
-	CCLOGERROR("CCUtils::mapLocalPath is not implemented for this platform, please finish it");
-	return false;
-#endif
-}
-
-bool CCUtils::isPathExistent(string path) {
-	// if path is empty, directly return
-	if(path.empty())
-		return true;
-	
-	// get mapped path
-	string mappedPath = mapLocalPath(path);
-	
-#if CC_TARGET_PLATFORM == CC_PLATFORM_IOS || CC_TARGET_PLATFORM == CC_PLATFORM_MAC
-	NSString* nsPath = [NSString stringWithFormat:@"%s", mappedPath.c_str()];
-	return [[NSFileManager defaultManager] fileExistsAtPath:nsPath];
-#elif CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID
-	return access(mappedPath.c_str(), 0) == 0;
-#elif CC_TARGET_PLATFORM == CC_PLATFORM_WIN32
-	DWORD dwAttrib = GetFileAttributes((LPCTSTR)mappedPath.c_str());
-	return dwAttrib != INVALID_FILE_ATTRIBUTES;
-#else
-	CCLOGERROR("CCUtils::mapLocalPath is not implemented for this platform, please finish it");
-	return false;
-#endif
-}
-
-string CCUtils::getPackageName() {
-#if CC_TARGET_PLATFORM == CC_PLATFORM_IOS || CC_TARGET_PLATFORM == CC_PLATFORM_MAC
-	NSBundle* bundle = [NSBundle mainBundle];
-    NSString* bundleId = [bundle bundleIdentifier];
-    return [bundleId cStringUsingEncoding:NSUTF8StringEncoding];
-#elif CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID
-	// get context
-    jobject ctx = getContext();
-    
-    // get package manager
-    JniMethodInfo t;
-    JniHelper::getMethodInfo(t, "android/content/Context", "getPackageManager", "()Landroid/content/pm/PackageManager;");
-	jobject packageManager = t.env->CallObjectMethod(ctx, t.methodID);
-    
-	// get package name
-    JniHelper::getMethodInfo(t, "android/content/Context", "getPackageName", "()Ljava/lang/String;");
-	jstring packageName = (jstring)t.env->CallObjectMethod(ctx, t.methodID);
-	
-	// get c++ string
-	const char* cpn = (const char*)t.env->GetStringUTFChars(packageName, NULL);
-	string pn = cpn;
-	
-	// release
-	t.env->ReleaseStringUTFChars(packageName, cpn);
-	
-	// return
-	return pn;
-#else
-	CCLOGERROR("CCUtils::getPackageName is not implemented for this platform, please finish it");
-	return false;
-#endif
 }
 
 ccColorHSV CCUtils::ccc32hsv(ccColor3B c) {
@@ -548,19 +474,22 @@ CCRect CCUtils::getBoundingBoxInWorldSpace(CCNode* node) {
 	return r;
 }
 
-void CCUtils::setTreeOpacity(CCNode* n, int o) {
-	// self
-	CCRGBAProtocol* p = dynamic_cast<CCRGBAProtocol*>(n);
-	if(p) {
-		p->setOpacity((GLubyte)o);
-	}
-	
-	// children
-	CCArray* children = n->getChildren();
-	CCObject* pObj = NULL;
-	CCARRAY_FOREACH(children, pObj) {
-		setTreeOpacity((CCNode*)pObj, o);
-	}
+CCRect CCUtils::getCenterRect(CCSpriteFrame* f) {
+    const CCSize& size = f->getOriginalSize();
+    return CCRectMake(size.width / 2, size.height / 2, 1, 1);
+}
+
+CCRect CCUtils::getCenterRect(const string& frameName) {
+    CCSpriteFrame* f = CCSpriteFrameCache::sharedSpriteFrameCache()->spriteFrameByName(frameName.c_str());
+    const CCSize& size = f->getOriginalSize();
+    return CCRectMake(size.width / 2, size.height / 2, 1, 1);
+}
+
+bool CCUtils::containsRect(const CCRect& r1, const CCRect& r2) {
+    return r1.getMinX() <= r2.getMinX() &&
+        r1.getMaxX() >= r2.getMaxX() &&
+        r1.getMinY() <= r2.getMinY() &&
+        r1.getMaxY() >= r2.getMaxY();
 }
 
 CCScene* CCUtils::getScene(CCNode* n) {
@@ -635,60 +564,6 @@ CCRect CCUtils::combine(const CCRect& r1, const CCRect& r2) {
 	return CCRectMake(left, bottom, right - left, top - bottom);
 }
 
-string CCUtils::getInternalStoragePath() {
-#if CC_TARGET_PLATFORM == CC_PLATFORM_IOS || CC_TARGET_PLATFORM == CC_PLATFORM_MAC
-    NSString* docDir = @"~/Documents";
-    docDir = [docDir stringByExpandingTildeInPath];
-    return [docDir cStringUsingEncoding:NSUTF8StringEncoding];
-#elif CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID
-    // get context
-    jobject ctx = getContext();
-    
-    // get file dir
-    JniMethodInfo t;
-    JniHelper::getMethodInfo(t, "android/content/Context", "getFilesDir", "()Ljava/io/File;");
-    jobject file = t.env->CallObjectMethod(ctx, t.methodID);
-    
-    // get absolute path
-    JniHelper::getMethodInfo(t, "java/io/File", "getAbsolutePath", "()Ljava/lang/String;");
-    jstring path = (jstring)t.env->CallObjectMethod(file, t.methodID);
-    
-    // get c++ string
-    string cppPath = path ? JniHelper::jstring2string(path) : "/";
-    
-    // release
-    t.env->DeleteLocalRef(path);
-    t.env->DeleteLocalRef(file);
-    t.env->DeleteLocalRef(ctx);
-    
-    // return
-    return cppPath;
-#else
-    CCLOGERROR("CCUtils::getInternalStoragePath is not implemented for this platform, please finish it");
-#endif
-}
-
-bool CCUtils::hasExternalStorage() {
-#if CC_TARGET_PLATFORM == CC_PLATFORM_IOS || CC_TARGET_PLATFORM == CC_PLATFORM_MAC
-    return true;
-#elif CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID
-    // get state
-    JniMethodInfo t;
-    JniHelper::getStaticMethodInfo(t, "android/os/Environment", "getExternalStorageState", "()Ljava/lang/String;");
-    jobject jState = t.env->CallStaticObjectMethod(t.classID, t.methodID);
-    
-    // get mount state
-    jfieldID fid = t.env->GetStaticFieldID(t.classID, "MEDIA_MOUNTED", "Ljava/lang/String;");
-    jstring jMounted = (jstring)t.env->GetStaticObjectField(t.classID, fid);
-    
-    // is same?
-    JniHelper::getMethodInfo(t, "java/lang/Object", "equals", "(Ljava/lang/Object;)Z");
-    return t.env->CallBooleanMethod(jMounted, t.methodID, jState);
-#else
-    CCLOGERROR("CCUtils::hasExternalStorage is not implemented for this platform, please finish it");
-#endif
-}
-
 int64_t CCUtils::currentTimeMillis() {
 	struct timeval tv;
 	gettimeofday(&tv, (struct timezone *) NULL);
@@ -696,123 +571,18 @@ int64_t CCUtils::currentTimeMillis() {
 	return when;
 }
 
-bool CCUtils::isDebugSignature() {
-#if CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID
-	// get sig data
-    jbyteArray certificate = getFirstSignatureBytes();
+CCArray& CCUtils::intComponentsOfString(const string& s, const char sep) {
+    // returned string list
+    s_tmpArray.removeAllObjects();
     
-    // create input stream
-    JniMethodInfo t;
-    JniHelper::getMethodInfo(t, "java/io/ByteArrayInputStream", "<init>", "([B)V");
-    jobject bais = t.env->NewObject(t.classID, t.methodID, certificate);
-    
-    // cert factory
-    JniHelper::getStaticMethodInfo(t, "java/security/cert/CertificateFactory", "getInstance", "(Ljava/lang/String;)Ljava/security/cert/CertificateFactory;");
-    jstring protocol = t.env->NewStringUTF("X.509");
-    jobject cf = t.env->CallStaticObjectMethod(t.classID, t.methodID, protocol);
-    
-    // cert
-    JniHelper::getMethodInfo(t, "java/security/cert/CertificateFactory", "generateCertificate", "(Ljava/io/InputStream;)Ljava/security/cert/Certificate;");
-    jobject cert = t.env->CallObjectMethod(cf, t.methodID, bais);
-    
-    // issuer dn
-    JniHelper::getMethodInfo(t, "java/security/cert/X509Certificate", "getIssuerDN", "()Ljava/security/Principal;");
-    jobject ip = t.env->CallObjectMethod(cert, t.methodID);
-    
-    // issuer dn name
-    JniHelper::getMethodInfo(t, "java/security/Principal", "getName", "()Ljava/lang/String;");
-    jstring ipn = (jstring)t.env->CallObjectMethod(ip, t.methodID);
-    
-    // check issuer dn name
-    bool debug = false;
-    string sub = "Android Debug";
-    string cppipn = JniHelper::jstring2string(ipn);
-    if(cppipn.find(sub) != string::npos) {
-        debug = true;
+    // quick reject
+    if(s.empty()) {
+        return s_tmpArray;
     }
     
-    // check more?
-    if(!debug) {
-        // subject dn
-        JniHelper::getMethodInfo(t, "java/security/cert/X509Certificate", "getSubjectDN", "()Ljava/security/Principal;");
-        jobject sp = t.env->CallObjectMethod(cert, t.methodID);
-        
-        // subject dn name
-        JniHelper::getMethodInfo(t, "java/security/Principal", "getName", "()Ljava/lang/String;");
-        jstring spn = (jstring)t.env->CallObjectMethod(sp, t.methodID);
-        
-        // check
-        string cppspn = JniHelper::jstring2string(spn);
-        if(cppspn.find(sub) != string::npos) {
-            debug = true;
-        }
-        
-        // release
-        t.env->DeleteLocalRef(sp);
-        t.env->DeleteLocalRef(spn);
-    }
-    
-    // release
-    t.env->DeleteLocalRef(bais);
-    t.env->DeleteLocalRef(certificate);
-    t.env->DeleteLocalRef(cf);
-    t.env->DeleteLocalRef(protocol);
-    t.env->DeleteLocalRef(cert);
-    t.env->DeleteLocalRef(ip);
-    t.env->DeleteLocalRef(ipn);
-    
-    // return
-    return debug;
-#else
-    return false;
-#endif
-}
-
-bool CCUtils::verifySignature(void* validSign, size_t len) {
-#if CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID
-    // basic check
-	if(!validSign)
-		return true;
-    
-	// get sig data
-    jbyteArray certificate = getFirstSignatureBytes();
-    
-	// md5
-    JNIEnv* env = getJNIEnv();
-	bool valid = true;
-	jsize cLen = env->GetArrayLength(certificate);
-	jbyte* cData = env->GetByteArrayElements(certificate, JNI_FALSE);
-	if (cLen > 0) {
-		const char* md5 = CCMD5::md5(cData, cLen);
-		size_t md5Len = strlen(md5);
-		if(md5Len != len) {
-			valid = false;
-		} else {
-			char* p = (char*)validSign;
-			for(size_t i = 0; i < md5Len; i++) {
-				if(md5[i] != p[i]) {
-					valid = false;
-					break;
-				}
-			}
-		}
-	}
-    
-	// release
-	env->ReleaseByteArrayElements(certificate, cData, 0);
-    env->DeleteLocalRef(certificate);
-    
-	// return
-	return valid;
-#else
-    return true;
-#endif
-}
-
-CCUtils::StringList& CCUtils::componentsOfString(const string& s, const char sep) {
     // remove head and tailing brace, bracket, parentheses
-    int start = 0;
-    int end = s.length() - 1;
+    size_t start = 0;
+    size_t end = s.length() - 1;
     char c = s[start];
     while(c == '{' || c == '[' || c == '(') {
         start++;
@@ -824,15 +594,12 @@ CCUtils::StringList& CCUtils::componentsOfString(const string& s, const char sep
         c = s[end];
     }
     
-    // returned string list
-    s_tmpStringList.clear();
-    
     // iterate string
-    int compStart = start;
-    for(int i = start; i <= end; i++) {
+    size_t compStart = start;
+    for(size_t i = start; i <= end; i++) {
         c = s[i];
         if(c == sep) {
-            s_tmpStringList.push_back(s.substr(compStart, i - compStart));
+            s_tmpArray.addObject(CCInteger::create(atoi(s.substr(compStart, i - compStart).c_str())));
             compStart = i + 1;
         } else if(c == ' ' || c == '\t' || c == '\r' || c == '\n') {
             if(compStart == i) {
@@ -843,68 +610,275 @@ CCUtils::StringList& CCUtils::componentsOfString(const string& s, const char sep
     
     // last comp
     if(compStart <= end) {
-        s_tmpStringList.push_back(s.substr(compStart, end - compStart + 1));
+        s_tmpArray.addObject(CCInteger::create(atoi(s.substr(compStart, end - compStart + 1).c_str())));
+    } else if(s[end] == sep) {
+        s_tmpArray.addObject(CCInteger::create(0));
     }
     
     // return
-    return s_tmpStringList;
+    return s_tmpArray;
+}
+
+CCArray& CCUtils::floatComponentsOfString(const string& s, const char sep) {
+    // returned list
+    s_tmpArray.removeAllObjects();
+    
+    // quick reject
+    if(s.empty()) {
+        return s_tmpArray;
+    }
+    
+    // remove head and tailing brace, bracket, parentheses
+    size_t start = 0;
+    size_t end = s.length() - 1;
+    char c = s[start];
+    while(c == '{' || c == '[' || c == '(') {
+        start++;
+        c = s[start];
+    }
+    c = s[end];
+    while(c == '}' || c == ']' || c == ')') {
+        end--;
+        c = s[end];
+    }
+    
+    // iterate string
+    size_t compStart = start;
+    for(size_t i = start; i <= end; i++) {
+        c = s[i];
+        if(c == sep) {
+            s_tmpArray.addObject(CCFloat::create(atof(s.substr(compStart, i - compStart).c_str())));
+            compStart = i + 1;
+        } else if(c == ' ' || c == '\t' || c == '\r' || c == '\n') {
+            if(compStart == i) {
+                compStart++;
+            }
+        }
+    }
+    
+    // last comp
+    if(compStart <= end) {
+        s_tmpArray.addObject(CCFloat::create(atof(s.substr(compStart, end - compStart + 1).c_str())));
+    } else if(s[end] == sep) {
+        s_tmpArray.addObject(CCFloat::create(0));
+    }
+    
+    // return
+    return s_tmpArray;
+}
+
+CCArray& CCUtils::boolComponentsOfString(const string& s, const char sep) {
+    // returned list
+    s_tmpArray.removeAllObjects();
+    
+    // quick reject
+    if(s.empty()) {
+        return s_tmpArray;
+    }
+    
+    // remove head and tailing brace, bracket, parentheses
+    size_t start = 0;
+    size_t end = s.length() - 1;
+    char c = s[start];
+    while(c == '{' || c == '[' || c == '(') {
+        start++;
+        c = s[start];
+    }
+    c = s[end];
+    while(c == '}' || c == ']' || c == ')') {
+        end--;
+        c = s[end];
+    }
+    
+    // iterate string
+    size_t compStart = start;
+    for(size_t i = start; i <= end; i++) {
+        c = s[i];
+        if(c == sep) {
+            string sub = s.substr(compStart, i - compStart);
+            toLowercase(sub);
+            s_tmpArray.addObject(CCBool::create(sub == "y" || sub == "yes" || sub == "true" || atoi(sub.c_str()) > 0));
+            compStart = i + 1;
+        } else if(c == ' ' || c == '\t' || c == '\r' || c == '\n') {
+            if(compStart == i) {
+                compStart++;
+            }
+        }
+    }
+    
+    // last comp
+    if(compStart <= end) {
+        string sub = s.substr(compStart, end - compStart + 1);
+        toLowercase(sub);
+        s_tmpArray.addObject(CCBool::create(sub == "y" || sub == "yes" || sub == "true" || atoi(sub.c_str()) > 0));
+    } else if(s[end] == sep) {
+        s_tmpArray.addObject(CCBool::create(false));
+    }
+    
+    // return
+    return s_tmpArray;
+}
+
+CCArray& CCUtils::componentsOfString(const string& s, const char sep) {
+    // returned list
+    s_tmpArray.removeAllObjects();
+    
+    // quick reject
+    if(s.empty()) {
+        return s_tmpArray;
+    }
+    
+    // remove head and tailing brace, bracket, parentheses
+    size_t start = 0;
+    size_t end = s.length() - 1;
+    char c = s[start];
+    while(c == '{' || c == '[' || c == '(') {
+        start++;
+        c = s[start];
+    }
+    c = s[end];
+    while(c == '}' || c == ']' || c == ')') {
+        end--;
+        c = s[end];
+    }
+    
+    // iterate string
+    size_t compStart = start;
+    for(size_t i = start; i <= end; i++) {
+        c = s[i];
+        if(c == sep) {
+            s_tmpArray.addObject(CCString::create(s.substr(compStart, i - compStart)));
+            compStart = i + 1;
+        } else if(c == ' ' || c == '\t' || c == '\r' || c == '\n') {
+            if(compStart == i) {
+                compStart++;
+            }
+        }
+    }
+    
+    // last comp
+    // or, if last char is separator, append an empty string
+    if(compStart <= end) {
+        s_tmpArray.addObject(CCString::create(s.substr(compStart, end - compStart + 1)));
+    } else if(s[end] == sep) {
+        s_tmpArray.addObject(CCString::create(""));
+    }
+    
+    // return
+    return s_tmpArray;
+}
+
+string CCUtils::joinString(const CCArray& a, const char sep) {
+    string ret;
+    CCObject* obj;
+    CCARRAY_FOREACH(&a, obj) {
+        CCString* ccs = (CCString*)obj;
+        if(ret.length() > 0)
+            ret += ',';
+        ret += ccs->getCString();
+    }
+    return ret;
+}
+
+string CCUtils::joinInt(const CCArray& a, const char sep) {
+    string ret;
+    CCObject* obj;
+    char buf[64];
+    CCARRAY_FOREACH(&a, obj) {
+        CCInteger* cci = (CCInteger*)obj;
+        if(ret.length() > 0)
+            ret += ',';
+        sprintf(buf, "%d", cci->getValue());
+        ret += buf;
+    }
+    return ret;
+}
+
+string CCUtils::joinFloat(const CCArray& a, const char sep) {
+    string ret;
+    CCObject* obj;
+    char buf[64];
+    CCARRAY_FOREACH(&a, obj) {
+        CCFloat* ccf = (CCFloat*)obj;
+        if(ret.length() > 0)
+            ret += ',';
+        sprintf(buf, "%f", ccf->getValue());
+        ret += buf;
+    }
+    return ret;
+}
+
+string CCUtils::joinBool(const CCArray& a, const char sep) {
+    string ret;
+    CCObject* obj;
+    CCARRAY_FOREACH(&a, obj) {
+        CCBool* ccb = (CCBool*)obj;
+        if(ret.length() > 0)
+            ret += ',';
+        ret += ccb->getValue() ? "true" : "false";
+    }
+    return ret;
 }
 
 CCPoint CCUtils::ccpFromString(const string& s) {
-    StringList comp = componentsOfString(s, ',');
+    CCArray& comp = componentsOfString(s, ',');
     float x = 0, y = 0;
-    if(comp.size() > 0) {
-        x = atof(comp.at(0).c_str());
+    if(comp.count() > 0) {
+        x = atof(((CCString*)comp.objectAtIndex(0))->getCString());
     }
-    if(comp.size() > 1) {
-        y = atof(comp.at(1).c_str());
+    if(comp.count() > 1) {
+        y = atof(((CCString*)comp.objectAtIndex(1))->getCString());
     }
     return ccp(x, y);
 }
 
 CCSize CCUtils::ccsFromString(const string& s) {
-    StringList comp = componentsOfString(s, ',');
+    CCArray& comp = componentsOfString(s, ',');
     float x = 0, y = 0;
-    if(comp.size() > 0) {
-        x = atof(comp.at(0).c_str());
+    if(comp.count() > 0) {
+        x = atof(((CCString*)comp.objectAtIndex(0))->getCString());
     }
-    if(comp.size() > 1) {
-        y = atof(comp.at(1).c_str());
+    if(comp.count() > 1) {
+        y = atof(((CCString*)comp.objectAtIndex(1))->getCString());
     }
     return CCSizeMake(x, y);
 }
 
 CCRect CCUtils::ccrFromString(const string& s) {
-    StringList comp = componentsOfString(s, ',');
+    CCArray& comp = componentsOfString(s, ',');
     float x = 0, y = 0, w = 0, h = 0;
-    if(comp.size() > 0) {
-        x = atof(comp.at(0).c_str());
+    if(comp.count() > 0) {
+        x = atof(((CCString*)comp.objectAtIndex(0))->getCString());
     }
-    if(comp.size() > 1) {
-        y = atof(comp.at(1).c_str());
+    if(comp.count() > 1) {
+        y = atof(((CCString*)comp.objectAtIndex(1))->getCString());
     }
-    if(comp.size() > 2) {
-        w = atof(comp.at(2).c_str());
+    if(comp.count() > 2) {
+        w = atof(((CCString*)comp.objectAtIndex(2))->getCString());
     }
-    if(comp.size() > 3) {
-        h = atof(comp.at(3).c_str());
+    if(comp.count() > 3) {
+        h = atof(((CCString*)comp.objectAtIndex(3))->getCString());
     }
     return CCRectMake(x, y, w, h);
 }
 
 CCArray& CCUtils::arrayFromString(const string& s) {
-    StringList comp = componentsOfString(s, ',');
+    CCArray& comp = componentsOfString(s, ',');
     
     // clear
+    CCArray copy;
+    copy.addObjectsFromArray(&comp);
     s_tmpArray.removeAllObjects();
     
     // iterator components
-    for(StringList::iterator iter = comp.begin(); iter != comp.end(); iter++) {
-        string& cs = *iter;
+    CCObject* obj;
+    CCARRAY_FOREACH(&comp, obj) {
+        CCString* ccs = (CCString*)obj;
+        string cs = ccs->getCString();
         if(cs.length() > 0) {
             if(cs[0] == '\'' || cs[0] == '"') {
-                int start = 1;
-                int end = cs.length() - 1;
+                size_t start = 1;
+                size_t end = cs.length() - 1;
                 if(cs[end] == '\'' || cs[end] == '"') {
                     end--;
                 }
@@ -985,6 +959,23 @@ void CCUtils::setOpacityRecursively(CCNode* node, int o) {
         CCNode* child = (CCNode*)children->objectAtIndex(i);        
         setOpacityRecursively(child, o);
     }
+    
+    Widget* w = dynamic_cast<Widget*>(node);
+    if(w) {
+        if(w->getVirtualRenderer()) {
+            CCRGBAProtocol* p = dynamic_cast<CCRGBAProtocol*>(w->getVirtualRenderer());
+            if(p) {
+                p->setOpacity(o);
+            }
+        }
+        
+        CCArray* children = w->getNodes();
+        int cc = children->count();
+        for(int i = 0; i < cc; i++) {
+            CCNode* child = (CCNode*)children->objectAtIndex(i);
+            setOpacityRecursively(child, o);
+        }
+    }
 }
 
 CCArray* CCUtils::getChildrenByTag(CCNode* parent, int tag) {
@@ -998,6 +989,16 @@ CCArray* CCUtils::getChildrenByTag(CCNode* parent, int tag) {
 	}
 	
 	return ret;
+}
+
+void CCUtils::removeChildrenByTag(CCNode* parent, int tag) {
+	CCObject* obj;
+	CCARRAY_FOREACH_REVERSE(parent->getChildren(), obj) {
+		CCNode* child = (CCNode*)obj;
+		if(child->getTag() == tag) {
+			child->removeFromParent();
+		}
+	}
 }
 
 double CCUtils::pround(double x, int precision) {
@@ -1015,112 +1016,32 @@ double CCUtils::pceil(double x, int precision) {
     return (int)ceil(x / div) * div;
 }
 
-int CCUtils::getCpuHz() {
-#if CC_TARGET_PLATFORM == CC_PLATFORM_IOS || CC_TARGET_PLATFORM == CC_PLATFORM_MAC
-    // get hardward string
-    size_t size = 100;
-    char* hw_machine = (char*)malloc(size);
-    int name[] = {CTL_HW, HW_MACHINE};
-    sysctl(name, 2, hw_machine, &size, NULL, 0);
-    string hw = hw_machine;
-    free(hw_machine);
+int CCUtils::getUTF8Bytes(unsigned char c) {
+	int count = 1;
+	if(c >= 128) {
+		c <<= 1;
+		do {
+			count++;
+			c <<= 1;
+		} while(c > 128);
+	}
     
-    // check
-    if(startsWith(hw, "iPhone")) {
-        string majorMinor = hw.substr(6);
-        StringList& parts = componentsOfString(majorMinor, ',');
-        int major = atoi(parts.at(0).c_str());
-        if(major < 4)
-            return 500000000;
-        else if(major == 4)
-            return 800000000;
-        else
-            return 1500000000;
-    } else if(startsWith(hw, "iPod")) {
-        string majorMinor = hw.substr(4);
-        StringList& parts = componentsOfString(majorMinor, ',');
-        int major = atoi(parts.at(0).c_str());
-        if(major < 4)
-            return 500000000;
-        else if(major == 4)
-            return 800000000;
-        else
-            return 1500000000;
-    } else if(startsWith(hw, "iPad")) {
-        string majorMinor = hw.substr(4);
-        StringList& parts = componentsOfString(majorMinor, ',');
-        int major = atoi(parts.at(0).c_str());
-        if(major < 2)
-            return 500000000;
-        else if(major == 2)
-            return 800000000;
-        else
-            return 1500000000;
-    } else {
-        return 1500000000;
-    }
-#elif CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID
-    // get package manager
-    JniMethodInfo t;
-    JniHelper::getStaticMethodInfo(t, "org/cocos2dx/lib/SystemUtils", "getCPUFrequencyMax", "()I");
-	return t.env->CallStaticIntMethod(t.classID, t.methodID);
-#else
-    return 0;
-#endif
+	return count;
 }
 
-void CCUtils::purgeDefaultForKey(const string& key) {
-#if CC_TARGET_PLATFORM == CC_PLATFORM_IOS || CC_TARGET_PLATFORM == CC_PLATFORM_MAC
-    NSString* nsKey = [NSString stringWithCString:key.c_str() encoding:NSUTF8StringEncoding];
-    [[NSUserDefaults standardUserDefaults] removeObjectForKey:nsKey];
-#elif CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID
-    // context
-    jobject ctx = getContext();
+int CCUtils::strlen8(const char* s) {
+	if(!s)
+		return 0;
     
-    // preference
-	// cocos2d-x doesn't use default preference name, so we have to get pref name
-	JniMethodInfo t;
-    JniHelper::getMethodInfo(t,
-							 "android/content/Context",
-							 "getSharedPreferences",
-							 "(Ljava/lang/String;I)Landroid/content/SharedPreferences;");
-	jclass clazz = t.env->FindClass("org/cocos2dx/lib/Cocos2dxHelper");
-	jfieldID fid = t.env->GetStaticFieldID(clazz, "PREFS_NAME", "Ljava/lang/String;");
-	jstring pn = (jstring)t.env->GetStaticObjectField(clazz, fid);
-	jobject pref = t.env->CallObjectMethod(ctx, t.methodID, pn, 0);
+	int count = 0;
+	char* p = (char*)s;
+	while(*p) {
+		count++;
+		int b = getUTF8Bytes(*p);
+		p += b;
+	}
     
-    // editor
-    JniHelper::getMethodInfo(t,
-                             "android/content/SharedPreferences",
-                             "edit",
-                             "()Landroid/content/SharedPreferences$Editor;");
-    jobject edit = t.env->CallObjectMethod(pref, t.methodID);
-    
-    // remove
-    jstring jKey = t.env->NewStringUTF(key.c_str());
-    JniHelper::getMethodInfo(t,
-                             "android/content/SharedPreferences$Editor",
-                             "remove",
-                             "(Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;");
-    t.env->CallObjectMethod(edit, t.methodID, jKey);
-    
-    // commit
-    JniHelper::getMethodInfo(t,
-                             "android/content/SharedPreferences$Editor",
-                             "commit",
-                             "()Z");
-    t.env->CallBooleanMethod(edit, t.methodID);
-    
-    // release
-	t.env->DeleteLocalRef(clazz);
-	t.env->DeleteLocalRef(pn);
-    t.env->DeleteLocalRef(jKey);
-    t.env->DeleteLocalRef(ctx);
-    t.env->DeleteLocalRef(pref);
-    t.env->DeleteLocalRef(edit);
-#else
-    CCLOGERROR("CCUtils::purgeDefaultForKey is not implemented for this platform, please finish it");
-#endif
+	return count;
 }
 
 CCSize CCUtils::measureRichString(const char* pText,
@@ -1129,263 +1050,82 @@ CCSize CCUtils::measureRichString(const char* pText,
                                   int maxWidth,
                                   float shadowOffsetX,
                                   float shadowOffsetY,
-                                  float strokeSize) {
+                                  float strokeSize,
+                                  float lineSpacing,
+                                  float globalImageScaleFactor,
+								  CC_DECRYPT_FUNC decryptFunc) {
     return CCImage_richlabel::measureRichString(pText,
                                                 pFontName,
                                                 nSize,
                                                 maxWidth,
                                                 shadowOffsetX,
                                                 shadowOffsetY,
-                                                strokeSize);
+                                                strokeSize,
+                                                lineSpacing,
+                                                globalImageScaleFactor,
+												decryptFunc);
 }
 
-bool CCUtils::isInternalMusicPlaying() {
-#if CC_TARGET_PLATFORM == CC_PLATFORM_IOS
-    MPMusicPlayerController* mp = [MPMusicPlayerController applicationMusicPlayer];
-	return [mp playbackState] == MPMusicPlaybackStatePlaying;
-#elif CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID
-    return false;
-#else
-    CCLOGERROR("CCUtils::playInternalMusic is not implemented for this platform, please finish it");
-#endif
+string CCUtils::makeScreenshot(CCNode* root, const string& path, bool needStencil) {
+	// check extension
+	string ext = getPathExtension(path);
+	bool png = ext == ".png";
+	bool jpg = ext == ".jpg" || ext == ".jpeg";
+	if(!png && !jpg)
+		jpg = true;
+	
+	// get render root
+	CCNode* renderNode = root;
+	CCRect bound;
+	if(renderNode)
+		bound = getBoundingBoxInWorldSpace(renderNode);
+	else
+		renderNode = CCDirector::sharedDirector()->getRunningScene();
+	
+	// render in texture
+	CCSize winSize = CCDirector::sharedDirector()->getWinSize();
+	CCRenderTexture* screen = CCRenderTexture::create(winSize.width,
+													  winSize.height,
+													  kCCTexture2DPixelFormat_RGBA8888,
+													  needStencil ? GL_DEPTH24_STENCIL8 : 0);
+	screen->begin();
+	renderNode->visit();
+	screen->end();
+	
+	// save buffer
+	screen->saveToFile(path.c_str(), png ? kCCImageFormatPNG : kCCImageFormatJPEG);
+	
+	// full path
+	return CCFileUtils::sharedFileUtils()->getWritablePath() + path;
 }
 
-void CCUtils::playInternalMusic() {
-#if CC_TARGET_PLATFORM == CC_PLATFORM_IOS
-    MPMusicPlayerController* mp = [MPMusicPlayerController applicationMusicPlayer];
-    [mp setQueueWithQuery:[MPMediaQuery songsQuery]];
-    [mp play];
-#elif CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID
-    // TODO not easy on Android
-#else
-    CCLOGERROR("CCUtils::playInternalMusic is not implemented for this platform, please finish it");
-#endif
+string CCUtils::trim(const string& s) {
+	// null checking
+	if(s.empty())
+		return s;
+	
+	// trim tail and head
+	size_t start = 0;
+	size_t end = s.length();
+    while(end > 0 && isspace(s.at(end - 1)))
+		end--;
+    while(start < end && isspace(s.at(start)))
+		start++;
+	
+	return s.substr(start, end - start);
 }
 
-void CCUtils::stopInternalMusic() {
-#if CC_TARGET_PLATFORM == CC_PLATFORM_IOS
-    MPMusicPlayerController* mp = [MPMusicPlayerController applicationMusicPlayer];
-    [mp stop];
-#elif CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID
-    // TODO not easy on Android
-#else
-    CCLOGERROR("CCUtils::playInternalMusic is not implemented for this platform, please finish it");
-#endif
-}
-
-#if CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID
-
-JNIEnv* CCUtils::getJNIEnv() {
-	JavaVM* vm = JniHelper::getJavaVM();
-	JNIEnv* env = NULL;
-    if(vm) {
-        jint ret = vm->GetEnv((void**) &env, JNI_VERSION_1_4);
-        if (ret != JNI_OK) {
-        	jint status = vm->AttachCurrentThread(&env, NULL);
-        	if(status < 0) {
-        	    CCLOGERROR("getJNIEnv: failed to attach current thread");
-        	    env = NULL;
-            }
+string CCUtils::getExternalOrFullPath(const string& path) {
+    if(CCFileUtils::sharedFileUtils()->isAbsolutePath(path)) {
+        return path;
+    } else {
+        string ext = externalize(path);
+        if(isPathExistent(ext)) {
+            return ext;
+        } else {
+            return CCFileUtils::sharedFileUtils()->fullPathForFilename(path.c_str());
         }
     }
-	
-	return env;
 }
-
-jobject CCUtils::getContext() {
-    JniMethodInfo t;
-    JniHelper::getStaticMethodInfo(t, "org/cocos2dx/lib/Cocos2dxActivity", "getContext", "()Landroid/content/Context;");
-    jobject ctx = t.env->CallStaticObjectMethod(t.classID, t.methodID);
-    return ctx;
-}
-
-jbyteArray CCUtils::getFirstSignatureBytes() {
-    // get context
-    jobject ctx = getContext();
-    
-    // get package manager
-    JniMethodInfo t;
-    JniHelper::getMethodInfo(t, "android/content/Context", "getPackageManager", "()Landroid/content/pm/PackageManager;");
-	jobject packageManager = t.env->CallObjectMethod(ctx, t.methodID);
-    
-    // get package name
-    JniHelper::getMethodInfo(t, "android/content/Context", "getPackageName", "()Ljava/lang/String;");
-	jstring packageName = (jstring)t.env->CallObjectMethod(ctx, t.methodID);
-    
-    // get package info
-    JniHelper::getMethodInfo(t, "android/content/pm/PackageManager", "getPackageInfo", "(Ljava/lang/String;I)Landroid/content/pm/PackageInfo;");
-	jint flags = t.env->GetStaticIntField(t.classID, t.env->GetStaticFieldID(t.classID, "GET_SIGNATURES", "I"));
-	jobject packageInfo = t.env->CallObjectMethod(packageManager, t.methodID, packageName, flags);
-    
-    // get first signature java object
-	jclass klazz = t.env->GetObjectClass(packageInfo);
-	jobjectArray signatures = (jobjectArray)t.env->GetObjectField(packageInfo,
-                                                                  t.env->GetFieldID(klazz, "signatures", "[Landroid/content/pm/Signature;"));
-	jobject signature = t.env->GetObjectArrayElement(signatures, 0);
-    
-    // get byte array of signature
-	klazz = t.env->GetObjectClass(signature);
-    t.methodID = t.env->GetMethodID(klazz, "toByteArray", "()[B");
-	jbyteArray certificate = (jbyteArray)t.env->CallObjectMethod(signature, t.methodID);
-    
-    // release
-    t.env->DeleteLocalRef(ctx);
-    t.env->DeleteLocalRef(packageManager);
-    t.env->DeleteLocalRef(packageName);
-    t.env->DeleteLocalRef(packageInfo);
-    t.env->DeleteLocalRef(signatures);
-    t.env->DeleteLocalRef(signature);
-    
-    // return
-    return certificate;
-}
-
-jobject CCUtils::newIntent(const char* activityName) {
-    // get context
-    jobject context = getContext();
-    
-    // find constructor
-    JniMethodInfo t;
-    JniHelper::getMethodInfo(t, "android/content/Intent", "<init>", "(Landroid/content/Context;Ljava/lang/Class;)V");
-    
-    // create activity name
-    size_t len = strlen(activityName);
-    char* jniName = (char*)calloc(len + 1, sizeof(char));
-    for(int i = 0; i < len; i++) {
-        if(activityName[i] == '.')
-            jniName[i] = '/';
-        else
-            jniName[i] = activityName[i];
-    }
-    jclass actClass = t.env->FindClass(jniName);
-    
-    // new intent
-    jobject intent = t.env->NewObject(t.classID, t.methodID, context, actClass);
-    
-    // clear
-    t.env->DeleteLocalRef(actClass);
-    t.env->DeleteLocalRef(context);
-    CC_SAFE_FREE(jniName);
-    
-    return intent;
-}
-
-jobject CCUtils::newIntentByAction(const char* action) {
-    JniMethodInfo t;
-    JniHelper::getMethodInfo(t, "android/content/Intent", "<init>", "(Ljava/lang/String;)V");
-    jstring a = t.env->NewStringUTF(action);
-    jobject intent = t.env->NewObject(t.classID, t.methodID, a);
-    t.env->DeleteLocalRef(a);
-    return intent;
-}
-
-void CCUtils::setIntentUri(jobject intent, const char* uri) {
-    JniMethodInfo t;
-    JniHelper::getStaticMethodInfo(t, "android/net/Uri", "parse", "(Ljava/lang/String;)Landroid/net/Uri;");
-    jstring jUriStr = t.env->NewStringUTF(uri);
-    jobject jUri = t.env->CallStaticObjectMethod(t.classID, t.methodID, jUriStr);
-    JniHelper::getMethodInfo(t, "android/content/Intent", "setData", "(Landroid/net/Uri;)Landroid/content/Intent;");
-    t.env->CallObjectMethod(intent, t.methodID, jUri);
-    t.env->DeleteLocalRef(jUri);
-    t.env->DeleteLocalRef(jUriStr);
-}
-
-void CCUtils::putBooleanExtra(jobject intent, const char* name, bool value) {
-    JniMethodInfo t;
-    JniHelper::getMethodInfo(t, "android/content/Intent", "putExtra", "(Ljava/lang/String;Z)Landroid/content/Intent;");
-    jstring s = t.env->NewStringUTF(name);
-    t.env->CallObjectMethod(intent, t.methodID, s, value);
-    t.env->DeleteLocalRef(s);
-}
-
-void CCUtils::putByteExtra(jobject intent, const char* name, unsigned char value) {
-    JniMethodInfo t;
-    JniHelper::getMethodInfo(t, "android/content/Intent", "putExtra", "(Ljava/lang/String;B)Landroid/content/Intent;");
-    jstring s = t.env->NewStringUTF(name);
-    t.env->CallObjectMethod(intent, t.methodID, s, value);
-    t.env->DeleteLocalRef(s);
-}
-
-void CCUtils::putCharExtra(jobject intent, const char* name, unsigned short value) {
-    JniMethodInfo t;
-    JniHelper::getMethodInfo(t, "android/content/Intent", "putExtra", "(Ljava/lang/String;C)Landroid/content/Intent;");
-    jstring s = t.env->NewStringUTF(name);
-    t.env->CallObjectMethod(intent, t.methodID, s, value);
-    t.env->DeleteLocalRef(s);
-}
-
-void CCUtils::putDoubleExtra(jobject intent, const char* name, double value) {
-    JniMethodInfo t;
-    JniHelper::getMethodInfo(t, "android/content/Intent", "putExtra", "(Ljava/lang/String;D)Landroid/content/Intent;");
-    jstring s = t.env->NewStringUTF(name);
-    t.env->CallObjectMethod(intent, t.methodID, s, value);
-    t.env->DeleteLocalRef(s);
-}
-
-void CCUtils::putFloatExtra(jobject intent, const char* name, float value) {
-    JniMethodInfo t;
-    JniHelper::getMethodInfo(t, "android/content/Intent", "putExtra", "(Ljava/lang/String;F)Landroid/content/Intent;");
-    jstring s = t.env->NewStringUTF(name);
-    t.env->CallObjectMethod(intent, t.methodID, s, value);
-    t.env->DeleteLocalRef(s);
-}
-
-void CCUtils::putIntExtra(jobject intent, const char* name, int value) {
-    JniMethodInfo t;
-    JniHelper::getMethodInfo(t, "android/content/Intent", "putExtra", "(Ljava/lang/String;I)Landroid/content/Intent;");
-    jstring s = t.env->NewStringUTF(name);
-    t.env->CallObjectMethod(intent, t.methodID, s, value);
-    t.env->DeleteLocalRef(s);
-}
-
-void CCUtils::putStringExtra(jobject intent, const char* name, const char* value) {
-    JniMethodInfo t;
-    JniHelper::getMethodInfo(t, "android/content/Intent", "putExtra", "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;");
-    jstring s = t.env->NewStringUTF(name);
-    t.env->CallObjectMethod(intent, t.methodID, s, value);
-    t.env->DeleteLocalRef(s);
-}
-
-void CCUtils::putLongExtra(jobject intent, const char* name, long value) {
-    JniMethodInfo t;
-    JniHelper::getMethodInfo(t, "android/content/Intent", "putExtra", "(Ljava/lang/String;J)Landroid/content/Intent;");
-    jstring s = t.env->NewStringUTF(name);
-    t.env->CallObjectMethod(intent, t.methodID, s, value);
-    t.env->DeleteLocalRef(s);
-}
-
-void CCUtils::putShortExtra(jobject intent, const char* name, short value) {
-    JniMethodInfo t;
-    JniHelper::getMethodInfo(t, "android/content/Intent", "putExtra", "(Ljava/lang/String;S)Landroid/content/Intent;");
-    jstring s = t.env->NewStringUTF(name);
-    t.env->CallObjectMethod(intent, t.methodID, s, value);
-    t.env->DeleteLocalRef(s);
-}
-
-void CCUtils::putParcelableExtra(jobject intent, const char* name, jobject value) {
-    JniMethodInfo t;
-    JniHelper::getMethodInfo(t, "android/content/Intent", "putExtra", "(Ljava/lang/String;Landroid/os/Parcelable;)Landroid/content/Intent;");
-    jstring s = t.env->NewStringUTF(name);
-    t.env->CallObjectMethod(intent, t.methodID, s, value);
-    t.env->DeleteLocalRef(s);
-}
-
-void CCUtils::startActivity(jobject intent) {
-    jobject ctx = getContext();
-    JniMethodInfo t;
-    JniHelper::getMethodInfo(t, "android/content/Context", "startActivity", "(Landroid/content/Intent;)V");
-    t.env->CallVoidMethod(ctx, t.methodID, intent);
-    t.env->DeleteLocalRef(ctx);
-}
-
-void CCUtils::sendBroadcast(jobject intent) {
-    jobject ctx = getContext();
-    JniMethodInfo t;
-    JniHelper::getMethodInfo(t, "android/content/Context", "sendBroadcast", "(Landroid/content/Intent;)V");
-    t.env->CallVoidMethod(ctx, t.methodID, intent);
-    t.env->DeleteLocalRef(ctx);
-}
-
-#endif // #if CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID
 
 NS_CC_END

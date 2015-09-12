@@ -1,47 +1,58 @@
 #include "CommonTest.h"
 #include "../testResource.h"
 #include "cocos2d.h"
+#include "cocos-ext.h"
+
+using namespace cocos2d::ui;
 
 TESTLAYER_CREATE_FUNC(CommonCalendar);
+TESTLAYER_CREATE_FUNC(CommonCallFuncT);
 TESTLAYER_CREATE_FUNC(CommonCatmullRomSprite);
-TESTLAYER_CREATE_FUNC(CommonClipInOut);
 TESTLAYER_CREATE_FUNC(CommonGradientSprite);
+TESTLAYER_CREATE_FUNC(CommonGridView);
+TESTLAYER_CREATE_FUNC(CommonImagePicker);
+TESTLAYER_CREATE_FUNC(CommonLaserSprite);
+TESTLAYER_CREATE_FUNC(CommonLayerClip);
 TESTLAYER_CREATE_FUNC(CommonLocale);
 TESTLAYER_CREATE_FUNC(CommonLocalization);
 TESTLAYER_CREATE_FUNC(CommonMenuItemColor);
-TESTLAYER_CREATE_FUNC(CommonMissile);
 TESTLAYER_CREATE_FUNC(CommonProgressHUD);
 TESTLAYER_CREATE_FUNC(CommonRichLabel);
 TESTLAYER_CREATE_FUNC(CommonRichLabel2);
 TESTLAYER_CREATE_FUNC(CommonResourceLoader);
 TESTLAYER_CREATE_FUNC(CommonRookieGuide);
-TESTLAYER_CREATE_FUNC(CommonShake);
-TESTLAYER_CREATE_FUNC(CommonScrollView);
+TESTLAYER_CREATE_FUNC(CommonScreenshot);
+TESTLAYER_CREATE_FUNC(CommonScrollBar);
+TESTLAYER_CREATE_FUNC(CommonScrollBar2);
+TESTLAYER_CREATE_FUNC(CommonSecureUserDefault);
 TESTLAYER_CREATE_FUNC(CommonSlider);
 TESTLAYER_CREATE_FUNC(CommonTiledSprite);
 TESTLAYER_CREATE_FUNC(CommonToast);
-TESTLAYER_CREATE_FUNC(CommonTreeFadeInOut);
 
 static NEWTESTFUNC createFunctions[] = {
     CF(CommonCalendar),
+    CF(CommonCallFuncT),
     CF(CommonCatmullRomSprite),
-    CF(CommonClipInOut),
 	CF(CommonGradientSprite),
+    CF(CommonGridView),
+	CF(CommonImagePicker),
+	CF(CommonLaserSprite),
+    CF(CommonLayerClip),
 	CF(CommonLocale),
     CF(CommonLocalization),
     CF(CommonMenuItemColor),
-    CF(CommonMissile),
     CF(CommonProgressHUD),
 	CF(CommonRichLabel),
     CF(CommonRichLabel2),
 	CF(CommonResourceLoader),
     CF(CommonRookieGuide),
-    CF(CommonShake),
-	CF(CommonScrollView),
+	CF(CommonScreenshot),
+	CF(CommonScrollBar),
+    CF(CommonScrollBar2),
+    CF(CommonSecureUserDefault),
     CF(CommonSlider),
     CF(CommonTiledSprite),
     CF(CommonToast),
-	CF(CommonTreeFadeInOut),
 };
 
 static int sceneIdx=-1;
@@ -201,6 +212,43 @@ std::string CommonCalendar::subtitle()
 
 //------------------------------------------------------------------
 //
+// CallFuncT
+//
+//------------------------------------------------------------------
+void CommonCallFuncT::onEnter()
+{
+    CommonDemo::onEnter();
+    
+    CCSize visibleSize = CCDirector::sharedDirector()->getVisibleSize();
+	CCPoint origin = CCDirector::sharedDirector()->getVisibleOrigin();
+    
+    m_label = CCLabelTTF::create("0", "Helvetica", 14);
+    m_label->setPosition(ccp(origin.x + visibleSize.width / 2,
+                             origin.y + visibleSize.height / 2));
+    addChild(m_label);
+    
+    runAction(CCSequence::create(CCDelayTime::create(1),
+                                 CCCallFuncT<int>::create(this, (CCCallFuncT<int>::SEL_CallFuncT)&CommonCallFuncT::randomChangeLabel, CCRANDOM_0_1() * 1000),
+                                 NULL));
+}
+
+void CommonCallFuncT::randomChangeLabel(int n) {
+    char buf[32];
+    sprintf(buf, "%d", n);
+    m_label->setString(buf);
+    
+    runAction(CCSequence::create(CCDelayTime::create(1),
+                                 CCCallFuncT<int>::create(this, (CCCallFuncT<int>::SEL_CallFuncT)&CommonCallFuncT::randomChangeLabel, CCRANDOM_0_1() * 1000),
+                                 NULL));
+}
+
+std::string CommonCallFuncT::subtitle()
+{
+    return "CallFuncT";
+}
+
+//------------------------------------------------------------------
+//
 // CatmullRom Sprite
 //
 //------------------------------------------------------------------
@@ -255,72 +303,6 @@ void CommonCatmullRomSprite::ccTouchCancelled(CCTouch *pTouch, CCEvent *pEvent) 
 
 //------------------------------------------------------------------
 //
-// Clip In & Out
-//
-//------------------------------------------------------------------
-void CommonClipInOut::onEnter()
-{
-    CommonDemo::onEnter();
-    
-    CCSize visibleSize = CCDirector::sharedDirector()->getVisibleSize();
-	CCPoint origin = CCDirector::sharedDirector()->getVisibleOrigin();
-    
-    CCClippingNode* n = CCClippingNode::create();
-    CCSprite* flag = CCSprite::create("Images/usa_flag.jpg");
-    CCDrawNode* stencil = CCDrawNode::create();
-    n->setStencil(stencil);
-    flag->setAnchorPoint(CCPointZero);
-    flag->setPosition(CCPointZero);
-    n->addChild(flag);
-    n->ignoreAnchorPointForPosition(false);
-    n->setAnchorPoint(ccp(0.5f, 0.5f));
-    n->setContentSize(flag->getContentSize());
-    n->setPosition(ccp(origin.x + visibleSize.width / 2,
-                       origin.y + visibleSize.height / 2));
-    addChild(n, 1);
-    
-    CCClipIn* in1 = CCClipIn::create(2);
-    CCClipOut* out1 = (CCClipOut*)in1->reverse()->autorelease();
-    CCClipIn* in2 = CCClipIn::create(2, ccp(1, 1));
-    CCClipOut* out2 = (CCClipOut*)in2->reverse()->autorelease();
-    CCClipIn* in3 = CCClipIn::create(2, ccp(-1, 1));
-    CCClipOut* out3 = (CCClipOut*)in3->reverse()->autorelease();
-    CCClipIn* in4 = CCClipIn::create(2, ccp(-1, -1));
-    CCClipOut* out4 = (CCClipOut*)in4->reverse()->autorelease();
-    CCClipIn* in5 = CCClipIn::create(2, ccp(1, -1));
-    CCClipOut* out5 = (CCClipOut*)in5->reverse()->autorelease();
-    CCClipIn* in6 = CCClipIn::create(2, ccp(0, -1));
-    CCClipOut* out6 = (CCClipOut*)in6->reverse()->autorelease();
-    CCClipIn* in7 = CCClipIn::create(2, ccp(0, 1));
-    CCClipOut* out7 = (CCClipOut*)in7->reverse()->autorelease();
-    CCClipIn* in8 = CCClipIn::create(2, ccp(-1, 0));
-    CCClipOut* out8 = (CCClipOut*)in8->reverse()->autorelease();
-    n->runAction(CCSequence::create(in1,
-                                    out1,
-                                    in2,
-                                    out2,
-                                    in3,
-                                    out3,
-                                    in4,
-                                    out4,
-                                    in5,
-                                    out5,
-                                    in6,
-                                    out6,
-                                    in7,
-                                    out7,
-                                    in8,
-                                    out8,
-                                    NULL));
-}
-
-std::string CommonClipInOut::subtitle()
-{
-    return "Clip In & Out";
-}
-
-//------------------------------------------------------------------
-//
 // Gradient Sprite
 //
 //------------------------------------------------------------------
@@ -359,6 +341,277 @@ void CommonGradientSprite::onEnter()
 std::string CommonGradientSprite::subtitle()
 {
     return "Gradient Sprite";
+}
+
+//------------------------------------------------------------------
+//
+// Grid View
+//
+//------------------------------------------------------------------
+void CommonGridView::onEnter()
+{
+    CommonDemo::onEnter();
+    
+    CCSize visibleSize = CCDirector::sharedDirector()->getVisibleSize();
+    CCPoint origin = CCDirector::sharedDirector()->getVisibleOrigin();
+
+    {
+        CCGridView* gridView = CCGridView::create(this, CCSizeMake(visibleSize.width * 0.45f, visibleSize.height * 0.6f));
+        gridView->ignoreAnchorPointForPosition(false);
+        gridView->setAnchorPoint(ccp(0, 0.5f));
+        gridView->setColCount(4);
+        gridView->setPosition(ccp(origin.x, origin.y + visibleSize.height / 2));
+        gridView->setDelegate(this);
+        gridView->setDirection(kCCScrollViewDirectionVertical);
+        gridView->setTag(1);
+        addChild(gridView);
+        gridView->reloadData();
+    }
+    
+    {
+        CCGridView* gridView = CCGridView::create(this, CCSizeMake(visibleSize.width * 0.45f, visibleSize.height * 0.6f));
+        gridView->ignoreAnchorPointForPosition(false);
+        gridView->setAnchorPoint(ccp(1, 0.5f));
+        gridView->setColCount(3);
+        gridView->setPosition(ccp(origin.x + visibleSize.width, origin.y + visibleSize.height / 2));
+        gridView->setDelegate(this);
+        gridView->setDirection(kCCScrollViewDirectionHorizontal);
+        gridView->setTag(2);
+        addChild(gridView);
+        gridView->reloadData();
+    }
+}
+
+std::string CommonGridView::subtitle()
+{
+    return "Grid View";
+}
+
+void CommonGridView::tableCellTouched(CCGridView* table, CCTableViewCell* cell) {
+    CCLOG("clicked cell: %d", cell->getTag());
+}
+
+CCSize CommonGridView::tableCellSizeForIndex(CCGridView *table, unsigned int idx) {
+    CCSize size = table->getViewSize();
+    size.width /= table->getColCount();
+    switch (table->getTag()) {
+        case 1:
+        {
+            if(idx % 4 == 1) {
+                size.width -= 40;
+            } else if(idx % 4 == 3) {
+                size.width += 40;
+            }
+            int row = idx / table->getColCount();
+            size.height /= ((row % 2) == 1) ? 3 : 4;
+            break;
+        }
+        default:
+        {
+            // for horizontal scrolling grid view, index start from top-left
+            // and increase downward
+            size.height /= 4;
+            if(idx % 4 == 1) {
+                size.height -= 20;
+            } else if(idx % 4 == 3) {
+                size.height += 20;
+            }
+            break;
+        }
+    }
+
+    return size;
+}
+
+CCTableViewCell* CommonGridView::tableCellAtIndex(CCGridView *table, unsigned int idx) {
+    // create cell
+    CCTableViewCell* cell = table->dequeueCell();
+    if(!cell) {
+        cell = new CCTableViewCell();
+        cell->autorelease();
+    }
+    
+    // set content size and tag
+    CCSize cellSize = tableCellSizeForIndex(table, idx);
+    cell->setContentSize(cellSize);
+    cell->setTag(idx);
+    
+    // add a random color layer
+    CCLayerColor* bg = (CCLayerColor*)cell->getChildByTag(1);
+    if(!bg) {
+        bg = CCLayerColor::create();
+        bg->setOpacity(255);
+        cell->addChild(bg, 0, 1);
+    }
+    bg->setContentSize(cellSize);
+    bg->setColor(ccc3(CCRANDOM_0_X_INT(255) & 0xff,
+                      CCRANDOM_0_X_INT(255) & 0xff,
+                      CCRANDOM_0_X_INT(255) & 0xff));
+    
+    // add a number label
+    CCRichLabelTTF* label = (CCRichLabelTTF*)cell->getChildByTag(2);
+    char buf[64];
+    sprintf(buf, "%u", idx);
+    if(!label) {
+        label = CCRichLabelTTF::create(buf, "Helvetica", 40);
+        cell->addChild(label, 1, 2);
+    }
+    label->setPosition(CCUtils::getLocalCenter(cell));
+    label->setString(buf);
+    
+    // return cell
+    return cell;
+}
+
+unsigned int CommonGridView::numberOfCellsInTableView(CCGridView *table) {
+    return 100;
+}
+
+void CommonGridView::tableCellHighlight(CCGridView* table, CCTableViewCell* cell) {
+}
+
+void CommonGridView::tableCellUnhighlight(CCGridView* table, CCTableViewCell* cell) {
+}
+
+//------------------------------------------------------------------
+//
+// Image Picker
+//
+//------------------------------------------------------------------
+void CommonImagePicker::onEnter()
+{
+    CommonDemo::onEnter();
+	m_photo = NULL;
+    
+    CCSize visibleSize = CCDirector::sharedDirector()->getVisibleSize();
+	CCPoint origin = CCDirector::sharedDirector()->getVisibleOrigin();
+	
+	// hint
+    CCToast* t = CCToast::create(this, CCLabelTTF::create("Touch to bring image picker out", "Helvetica", 40 / CC_CONTENT_SCALE_FACTOR()));
+    t->setPosition(ccp(origin.x + visibleSize.width / 2,
+                       origin.y + visibleSize.height / 5));
+	
+	// enable touch
+	setTouchEnabled(true);
+	setTouchMode(kCCTouchesOneByOne);
+}
+
+std::string CommonImagePicker::subtitle()
+{
+    return "Image Picker";
+}
+
+bool CommonImagePicker::ccTouchBegan(CCTouch *pTouch, CCEvent *pEvent) {
+	if(CCImagePicker::hasFrontCamera())
+		CCImagePicker::pickFromFrontCamera("a.jpg", this, 100, 100);
+	else if(CCImagePicker::hasCamera())
+		CCImagePicker::pickFromCamera("a.png", this, 100, 100);
+	else
+		CCImagePicker::pickFromAlbum("a.jpg", this, 100, 100);
+	
+	return true;
+}
+
+void CommonImagePicker::onImagePicked(const string& fullPath, int w, int h) {
+	if(m_photo)
+		m_photo->removeFromParent();
+
+	CCTextureCache::sharedTextureCache()->removeTextureForKey(fullPath.c_str());
+	CCSize visibleSize = CCDirector::sharedDirector()->getVisibleSize();
+	CCPoint origin = CCDirector::sharedDirector()->getVisibleOrigin();
+	m_photo = CCSprite::create(fullPath.c_str());
+	m_photo->setPosition(ccp(origin.x + visibleSize.width / 2,
+							 origin.y + visibleSize.height / 2));
+	addChild(m_photo);
+}
+
+void CommonImagePicker::onImagePickingCancelled() {
+	CCLOG("onImagePickingCancelled");
+}
+
+//------------------------------------------------------------------
+//
+// Laser Sprite
+//
+//------------------------------------------------------------------
+void CommonLaserSprite::onEnter()
+{
+    CommonDemo::onEnter();
+    
+    CCSize visibleSize = CCDirector::sharedDirector()->getVisibleSize();
+	CCPoint origin = CCDirector::sharedDirector()->getVisibleOrigin();
+    
+	// laser 1
+	m_laser1 = CCLaserSprite::create(10, visibleSize.height);
+	m_laser1->setAnchorPoint(ccp(0.5f, 0));
+	m_laser1->setPosition(ccp(origin.x + visibleSize.width / 2,
+							  origin.y));
+	addChild(m_laser1);
+	
+	scheduleUpdate();
+}
+
+std::string CommonLaserSprite::subtitle()
+{
+    return "Laser Sprite";
+}
+
+void CommonLaserSprite::update(float delta) {
+	static bool add = false;
+	CCSize visibleSize = CCDirector::sharedDirector()->getVisibleSize();
+	CCSize size = m_laser1->getContentSize();
+	if(add) {
+		size.height++;
+		if(size.height >= visibleSize.height) {
+			add = false;
+		}
+	} else {
+		size.height--;
+		if(size.height <= visibleSize.height / 2) {
+			add = true;
+		}
+	}
+	m_laser1->setHeight(size.height);
+}
+
+//------------------------------------------------------------------
+//
+// Layer Clip
+//
+//------------------------------------------------------------------
+void CommonLayerClip::onEnter()
+{
+    CommonDemo::onEnter();
+    
+    CCSize visibleSize = CCDirector::sharedDirector()->getVisibleSize();
+	CCPoint origin = CCDirector::sharedDirector()->getVisibleOrigin();
+    
+    // clip layer
+    CCSprite* flag = CCSprite::create("Images/usa_flag.jpg");
+    CCLayerClip* layer = CCLayerClip::create(cc4RED);
+    layer->ignoreAnchorPointForPosition(false);
+    layer->setContentSize(CCSizeMake(visibleSize.width / 2,
+                                     flag->getContentSize().height));
+    layer->setPosition(ccp(origin.x + visibleSize.width / 2,
+                           origin.y + visibleSize.height / 2));
+    addChild(layer);
+    
+    // add flag to clip layer
+    flag->setAnchorPoint(ccp(0, 0.5f));
+    flag->setPosition(ccp(layer->getContentSize().width,
+                           layer->getContentSize().height / 2));
+    layer->addChild(flag);
+    
+    // let flag move to see clip effect
+    CCMoveBy* move = CCMoveBy::create(5, ccp(-flag->getContentSize().width - layer->getContentSize().width, 0));
+    CCFiniteTimeAction* back = (CCFiniteTimeAction*)move->reverse();
+    CCSequence* seq = CCSequence::createWithTwoActions(move, back);
+    flag->runAction(CCRepeatForever::create(seq));
+}
+
+std::string CommonLayerClip::subtitle()
+{
+    return "Layer Clip";
 }
 
 //------------------------------------------------------------------
@@ -446,65 +699,6 @@ void CommonMenuItemColor::onEnter()
 std::string CommonMenuItemColor::subtitle()
 {
     return "Color Menu Item";
-}
-
-//------------------------------------------------------------------
-//
-// Missile
-//
-//------------------------------------------------------------------
-void CommonMissile::onEnter()
-{
-    CommonDemo::onEnter();
-    
-    CCSize visibleSize = CCDirector::sharedDirector()->getVisibleSize();
-	CCPoint origin = CCDirector::sharedDirector()->getVisibleOrigin();
-    
-    // target
-    CCSprite* grossini = CCSprite::create("Images/grossini.png");
-    grossini->setPosition(ccp(origin.x + visibleSize.width / 8,
-                              origin.y + visibleSize.height / 8));
-    grossini->setTag(1);
-    addChild(grossini);
-    
-    // move target
-    CCMoveTo* m1 = CCMoveTo::create(2, ccp(origin.x + visibleSize.width * 7 / 8,
-                                           origin.y + visibleSize.height / 8));
-    CCMoveTo* m2 = CCMoveTo::create(2, ccp(origin.x + visibleSize.width * 7 / 8,
-                                           origin.y + visibleSize.height * 7 / 8));
-    CCMoveTo* m3 = CCMoveTo::create(2, ccp(origin.x + visibleSize.width / 8,
-                                           origin.y + visibleSize.height * 7 / 8));
-    CCMoveTo* m4 = CCMoveTo::create(2, ccp(origin.x + visibleSize.width / 8,
-                                           origin.y + visibleSize.height / 8));
-    CCSequence* seq = CCSequence::create(m1, m2, m3, m4, NULL);
-    grossini->runAction(CCRepeatForever::create(seq));
-    
-    // missile
-    CCSprite* m = CCSprite::create("Images/r1.png");
-    m->setPosition(ccp(origin.x + visibleSize.width / 2,
-                       origin.y + visibleSize.height / 2));
-    addChild(m);
-    
-    // run missile action
-    CCMissile* action = CCMissile::create(130, grossini, 0,
-                                          CCCallFunc::create(this, callfunc_selector(CommonMissile::onHit)));
-    m->runAction(action);
-}
-
-void CommonMissile::onHit() {
-    getChildByTag(1)->stopAllActions();
-    
-    CCSize visibleSize = CCDirector::sharedDirector()->getVisibleSize();
-	CCPoint origin = CCDirector::sharedDirector()->getVisibleOrigin();
-    CCLabelTTF* label = CCLabelTTF::create("Hit!!", "Helvetica", 24);
-    label->setPosition(ccp(origin.x + visibleSize.width / 2,
-                           origin.y + visibleSize.height / 2));
-    addChild(label);
-}
-
-std::string CommonMissile::subtitle()
-{
-    return "Missile";
 }
 
 //------------------------------------------------------------------
@@ -631,12 +825,24 @@ void CommonRichLabel::onEnter()
     // image tag test
     // text and other tags between image tag will be ignored
     // if image path starts with '/', we treat it like an external image. In iOS, it will be mapped to ~/Documents
-    label = CCRichLabelTTF::create("Hello, [image=Images/a.png scale=2]blo[i]c[/i]ks[/image], [u]Grossini[/u][image=Images/grossini.png scaley=0.5 scalex=0.3]grossini[/image]",
+    label = CCRichLabelTTF::create("Hello, [image=Images/a.png w=64 h=32 offsety=-32]blo[i]c[/i]ks[/image], [u]Gross[image= w=32 h=48]grossini[/image]ini[/u]\n[color=ff0000ff to=000000ff duration=0.5 transient=true]This[/color] is [color=ff0000ff to=ff00ff00 duration=0.5]second[/color] li[image=usa_flag.jpg plist=Images/z_test.plist atlas=Images/z_test.png scale=1.2]usa[/image]ne",
                                    "Helvetica",
                                    20);
 	label->setPosition(ccp(origin.x + visibleSize.width / 2,
 						   origin.y + visibleSize.height * 2 / 5));
 	addChild(label);
+	
+	// now create a grossini in placeholder place and move it
+	CCRect r = label->getImageBound(1);
+	CCSprite* g = CCSprite::create("Images/grossini.png");
+	g->setScale(r.size.width / g->getContentSize().width);
+	g->setScale(r.size.height / g->getContentSize().height);
+	g->setAnchorPoint(CCPointZero);
+	g->setPosition(r.origin);
+	label->addChild(g);
+	g->runAction(CCRepeatForever::create(CCSequence::create(CCMoveBy::create(0.5f, ccp(0, 10)),
+															CCMoveBy::create(0.5f, ccp(0, -10)),
+															NULL)));
     
     // font tag test
     label = CCRichLabelTTF::create("H[i][b][u]ell[/u][/b][/i]o[size=20][font=font/Arial Rounded MT Bold.ttf]H[i]ell[/i]o[/font][/size]",
@@ -645,6 +851,7 @@ void CommonRichLabel::onEnter()
     label->setColor(ccc4(0, 0, 255, 255), ccc4(0, 255, 0, 255), ccp(1, 0));
 	label->setPosition(ccp(origin.x + visibleSize.width / 2,
 						   origin.y + visibleSize.height * 3 / 5));
+    label->startLoopDisplay(0.1f, kCCRepeatForever);
 	addChild(label);
 }
 
@@ -701,6 +908,7 @@ void CommonRichLabel2::onEnter()
 						   origin.y + visibleSize.height * 3 / 5));
 	label->setLinkTarget(0, CCCallFunc::create(this, callfunc_selector(CommonRichLabel2::onLinkClicked)));
 	label->enableShadow(CCSizeMake(-10, -10), 0xafffff00, 4);
+    label->setLineSpacing(20);
 	addChild(label);
 }
 
@@ -866,35 +1074,54 @@ void CommonRookieGuide::onGuideClicked() {
 
 //------------------------------------------------------------------
 //
-// Shake
+// ScrollBar
 //
 //------------------------------------------------------------------
-void CommonShake::onEnter()
+void CommonScrollBar::onEnter()
 {
     CommonDemo::onEnter();
-
-    CCSize visibleSize = CCDirector::sharedDirector()->getVisibleSize();
-	CCPoint origin = CCDirector::sharedDirector()->getVisibleOrigin();
 	
-	CCSprite* s = CCSprite::create("Images/grossini.png");
-	s->setPosition(ccp(origin.x + visibleSize.width / 2,
-					   origin.y + visibleSize.height / 2));
-	addChild(s);
+	TouchGroup* tg = TouchGroup::create();
+	addChild(tg);
 	
-	s->runAction(CCRepeatForever::create(CCShake::create(1, 5)));
+	// load scrollview layout
+	Layout* _layout = static_cast<Layout*>(GUIReader::shareReader()->widgetFromJsonFile("cocosgui/UIEditorTest/UIScrollView_Editor/UIScrollView_Vertical_Editor/ui_scrollview_editor_1.json"));
+	tg->addWidget(_layout);
+	CCSize screenSize = CCDirector::sharedDirector()->getWinSize();
+	CCSize rootSize = _layout->getSize();
+	tg->setPosition(CCPoint((screenSize.width - rootSize.width) / 2,
+							(screenSize.height - rootSize.height) / 2));
+	
+	// hide title
+	Label* _sceneTitle = static_cast<Label*>(UIHelper::seekWidgetByName(_layout, "UItest"));
+	_sceneTitle->setVisible(false);
+	
+	// hide back
+	Label* back_label = static_cast<Label*>(UIHelper::seekWidgetByName(_layout, "back"));
+	back_label->setVisible(false);
+	
+	// scroll view
+	ScrollView* sv = (ScrollView*)UIHelper::seekWidgetByName(_layout, "ScrollView_1137");
+	
+	// vertical bar
+	CCScale9Sprite* track = CCScale9Sprite::create("Images/track.png");
+	CCSprite* thumb = CCSprite::create("Images/thumb.png");
+	CCScrollBar* vsb = CCScrollBar::create(track, thumb);
+	vsb->setAutoFade(true);
+	vsb->attachToUIScrollView(sv, cci(5, 5, 5, 5));
 }
 
-std::string CommonShake::subtitle()
+std::string CommonScrollBar::subtitle()
 {
-    return "Shake";
+    return "ScrollBar - Works with CocoStudio ScrollView";
 }
 
 //------------------------------------------------------------------
 //
-// Scroll View
+// ScrollBar2
 //
 //------------------------------------------------------------------
-void CommonScrollView::onEnter()
+void CommonScrollBar2::onEnter()
 {
     CommonDemo::onEnter();
 	
@@ -908,16 +1135,22 @@ void CommonScrollView::onEnter()
     scroll->setPosition(ccp(origin.x + visibleSize.width / 2,
 							origin.y + visibleSize.height / 2));
     scroll->setDirection(kCCScrollViewDirectionVertical);
-    scroll->setBounceable(false);
     addChild(scroll);
 	
 	CCLayer* content = createScrollContent(size);
     scroll->addChild(content);
     scroll->setContentSize(content->getContentSize());
     scroll->setContentOffset(scroll->minContainerOffset());
+    
+    // vertical bar
+	CCScale9Sprite* track = CCScale9Sprite::create("Images/track.png");
+	CCSprite* thumb = CCSprite::create("Images/thumb.png");
+	CCScrollBar* vsb = CCScrollBar::create(track, thumb);
+	vsb->setAutoFade(true);
+	vsb->attachToCCScrollView(scroll, cci(5, 5, 5, 5));
 }
 
-CCLayer* CommonScrollView::createScrollContent(const CCSize& size) {
+CCLayer* CommonScrollBar2::createScrollContent(const CCSize& size) {
 	CCLayerColor* layer = CCLayerColor::create(ccc4(255, 0, 0, 255));
 	
 	float y = 0;
@@ -936,9 +1169,132 @@ CCLayer* CommonScrollView::createScrollContent(const CCSize& size) {
 	return layer;
 }
 
-std::string CommonScrollView::subtitle()
+std::string CommonScrollBar2::subtitle()
 {
-    return "Scroll View (Support Fling)";
+    return "ScrollBar - Works with CCScrollView";
+}
+
+//------------------------------------------------------------------
+//
+// SecureUserDefault
+//
+//------------------------------------------------------------------
+void CommonSecureUserDefault::onEnter()
+{
+    CommonDemo::onEnter();
+
+    CCSize visibleSize = CCDirector::sharedDirector()->getVisibleSize();
+	CCPoint origin = CCDirector::sharedDirector()->getVisibleOrigin();
+
+	// init
+    CCSecureUserDefault::init(encrypt, decrypt);
+    
+    // save a value
+    CCSecureUserDefault::getInstance()->setStringForKey("testkey", "testvalue");
+    
+    // now read it from standard default, it will be unreadable
+    string v = CCUserDefault::sharedUserDefault()->getStringForKey("testkey");
+    char buf[1024];
+    sprintf(buf, "read by CCUserDefault: %s", v.c_str());
+    CCRichLabelTTF* label = CCRichLabelTTF::create(buf, "Helvetica", 30);
+    label->setPosition(ccp(origin.x + visibleSize.width / 2,
+                           origin.y + visibleSize.height * 2 / 3));
+    addChild(label);
+    
+    // read it from secure default, ok
+    v = CCSecureUserDefault::getInstance()->getStringForKey("testkey");
+    sprintf(buf, "read by CCSecureUserDefault: %s", v.c_str());
+    label = CCRichLabelTTF::create(buf, "Helvetica", 30);
+    label->setPosition(ccp(origin.x + visibleSize.width / 2,
+                           origin.y + visibleSize.height / 3));
+    addChild(label);
+}
+
+std::string CommonSecureUserDefault::subtitle()
+{
+    return "Secure User Default";
+}
+
+const char* CommonSecureUserDefault::decrypt(const char* enc, int encLen, int* plainLen) {
+    // to decrypt, NOT again
+    char* dec = (char*)malloc(encLen * sizeof(char));
+    for(int i = 0; i < encLen; i++) {
+        dec[i] = ~enc[i];
+    }
+    if(plainLen)
+        *plainLen = encLen;
+    return dec;
+}
+
+const char* CommonSecureUserDefault::encrypt(const char* plain, int plainLen, int* encLen) {
+    // very simple encryption, just NOT
+    char* enc = (char*)malloc(plainLen * sizeof(char));
+    for(int i = 0; i < plainLen; i++) {
+        enc[i] = ~plain[i];
+    }
+    if(encLen)
+        *encLen = plainLen;
+    return enc;
+}
+
+//------------------------------------------------------------------
+//
+// Screenshot
+//
+//------------------------------------------------------------------
+void CommonScreenshot::onEnter()
+{
+    CommonDemo::onEnter();
+	m_shot = NULL;
+	
+	setOpacity(255);
+	setColor(ccRED);
+	
+    CCSize visibleSize = CCDirector::sharedDirector()->getVisibleSize();
+	CCPoint origin = CCDirector::sharedDirector()->getVisibleOrigin();
+	
+	// grossini
+	CCSprite* s = CCSprite::create("Images/grossini.png");
+	s->setPosition(ccp(origin.x + visibleSize.width / 2,
+					   origin.y + visibleSize.height / 2));
+	addChild(s);
+	
+	// rotate grossini
+	s->runAction(CCRepeatForever::create(CCRotateBy::create(5, 360)));
+	
+	// hint
+    CCToast* t = CCToast::create(this, CCLabelTTF::create("Touch to capture screen", "Helvetica", 40 / CC_CONTENT_SCALE_FACTOR()));
+    t->setPosition(ccp(origin.x + visibleSize.width / 2,
+                       origin.y + visibleSize.height / 5));
+	
+	// enable touch
+	setTouchEnabled(true);
+	setTouchMode(kCCTouchesOneByOne);
+}
+
+std::string CommonScreenshot::subtitle()
+{
+    return "Screenshot";
+}
+
+bool CommonScreenshot::ccTouchBegan(CCTouch *pTouch, CCEvent *pEvent) {
+	// only shot this layer
+	string path = CCUtils::makeScreenshot(this, "a.jpg");
+	
+	// remove old screenshot texture
+	CCTextureCache::sharedTextureCache()->removeTextureForKey(path.c_str());
+	
+	// create sprite from screenshot, to avoid to capturing it, we add it to scene
+	// another way is setting unwanted node to invisible before makeScreeshot
+	if(m_shot)
+		m_shot->removeFromParent();
+	m_shot = CCSprite::create(path.c_str());
+	m_shot->setAnchorPoint(CCPointZero);
+	m_shot->setPosition(CCDirector::sharedDirector()->getVisibleOrigin());
+	m_shot->setScale(0.25f);
+	getParent()->addChild(m_shot);
+	
+	return true;
 }
 
 //------------------------------------------------------------------
@@ -1030,6 +1386,15 @@ void CommonTiledSprite::onEnter()
 	s->setPosition(ccp(origin.x + visibleSize.width / 2,
 					   origin.y + visibleSize.height / 2));
 	addChild(s);
+    
+    // run animation on tiled sprite
+    CCRect r = CCRectMake(0, 0, 28, 1);
+    CCAnimation* anim = CCAnimation::create();
+    anim->addSpriteFrame(CCSpriteFrame::create("Images/tiled.png", r));
+    anim->addSpriteFrame(CCSpriteFrame::create("Images/tiled_2.png", r));
+    anim->addSpriteFrame(CCSpriteFrame::create("Images/tiled_3.png", r));
+    anim->setDelayPerUnit(0.05f);
+    s->runAction(CCRepeatForever::create(CCAnimate::create(anim)));
 }
 
 std::string CommonTiledSprite::subtitle()
@@ -1078,35 +1443,4 @@ bool CommonToast::ccTouchBegan(CCTouch *pTouch, CCEvent *pEvent) {
 std::string CommonToast::subtitle()
 {
     return "Toast";
-}
-
-//------------------------------------------------------------------
-//
-// Tree Fade In/Out
-//
-//------------------------------------------------------------------
-void CommonTreeFadeInOut::onEnter()
-{
-    CommonDemo::onEnter();
-	
-    CCSize visibleSize = CCDirector::sharedDirector()->getVisibleSize();
-	CCPoint origin = CCDirector::sharedDirector()->getVisibleOrigin();
-	
-	CCSprite* s = CCSprite::create("Images/grossini.png");
-	s->setPosition(ccp(origin.x + visibleSize.width / 2,
-					   origin.y + visibleSize.height / 2));
-	addChild(s);
-	
-	CCSprite* s2 = CCSprite::create("Images/grossini.png");
-	s->addChild(s2);
-	
-	CCSprite* s3 = CCSprite::create("Images/grossini.png");
-	s2->addChild(s3);
-	
-	s->runAction(CCRepeatForever::create(CCSequence::createWithTwoActions(CCTreeFadeOut::create(2), CCTreeFadeIn::create(2))));
-}
-
-std::string CommonTreeFadeInOut::subtitle()
-{
-    return "Tree Fade In/Out";
 }

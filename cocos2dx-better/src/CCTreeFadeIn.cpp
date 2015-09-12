@@ -23,8 +23,16 @@
  ****************************************************************************/
 #include "CCTreeFadeIn.h"
 #include "CCTreeFadeOut.h"
+#include "cocos-ext.h"
+
+USING_NS_CC_EXT;
+using namespace cocos2d::ui;
 
 NS_CC_BEGIN
+
+CCTreeFadeIn::CCTreeFadeIn() :
+m_recursivelyExclude(true) {
+}
 
 CCTreeFadeIn* CCTreeFadeIn::create(float d) {
     CCTreeFadeIn* pAction = new CCTreeFadeIn();
@@ -40,18 +48,38 @@ void CCTreeFadeIn::update(float time) {
 }
 
 void CCTreeFadeIn::fadeInRecursively(CCNode* n, float time) {
+    CCRGBAProtocol* p = dynamic_cast<CCRGBAProtocol*>(n);
+    if(p) {
+        p->setOpacity((GLubyte)(255 * time));
+    }
+    
     CCArray* children = n->getChildren();
     int cc = n->getChildrenCount();
     for(int i = 0; i < cc; i++) {
         CCNode* child = (CCNode*)children->objectAtIndex(i);
 		if(!m_excludeList.containsObject(child)) {
-			CCRGBAProtocol* p = dynamic_cast<CCRGBAProtocol*>(child);
-			if(p) {
-				p->setOpacity((GLubyte)(255 * time));
-			}
-		}
+            fadeInRecursively(child, time);
+		} else if(!m_recursivelyExclude) {
+            fadeInRecursively(child, time);
+        }
+    }
+    
+    // check widget
+    Widget* w = dynamic_cast<Widget*>(n);
+    if(w) {
+        if(w->getVirtualRenderer()) {
+            CCRGBAProtocol* p = dynamic_cast<CCRGBAProtocol*>(w->getVirtualRenderer());
+            if(p) {
+                p->setOpacity((GLubyte)(255 * time));
+            }
+        }
         
-        fadeInRecursively(child, time);
+        CCArray* children = w->getNodes();
+        int cc = children->count();
+        for(int i = 0; i < cc; i++) {
+            CCNode* child = (CCNode*)children->objectAtIndex(i);
+            fadeInRecursively(child, time);
+        }
     }
 }
 
@@ -59,8 +87,9 @@ CCActionInterval* CCTreeFadeIn::reverse(void) {
     return CCTreeFadeOut::create(m_fDuration);
 }
 
-void CCTreeFadeIn::excludeNode(CCNode* n) {
+void CCTreeFadeIn::excludeNode(CCNode* n, bool recursively) {
 	m_excludeList.addObject(n);
+    m_recursivelyExclude = recursively;
 }
 
 NS_CC_END

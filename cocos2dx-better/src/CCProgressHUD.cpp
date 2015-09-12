@@ -22,7 +22,7 @@
  THE SOFTWARE.
  ****************************************************************************/
 #include "CCProgressHUD.h"
-#include "CCDrawingPrimitivesEx.h"
+#include "CBDrawingPrimitives.h"
 
 NS_CC_BEGIN
 
@@ -108,6 +108,15 @@ CCProgressHUD* CCProgressHUD::show(const string& message) {
         if(scene) {
             scene->addChild(s_hud, MAX_INT);
         }
+    }
+    
+    return s_hud;
+}
+
+CCProgressHUD* CCProgressHUD::show(const string& message, CCNode* parent) {
+    if(!s_hud) {
+        s_hud = CCProgressHUD::create(message);
+        parent->addChild(s_hud, MAX_INT);
     }
     
     return s_hud;

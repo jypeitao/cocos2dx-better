@@ -31,12 +31,15 @@
 #include <errno.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include "CCMoreMacros.h"
+#include <pthread.h>
 
 using namespace std;
 
 NS_CC_BEGIN
 
 class CCTCPSocketHub;
+class CCPacket;
 
 /**
  * TCP socket
@@ -45,31 +48,22 @@ class CC_DLL CCTCPSocket : public CCObject {
 	friend class CCTCPSocketHub;
 	
 private:
-	/// socket handle
-    int m_sock;
-	
-    /// write buffer
-    char m_outBuf[kCCSocketOutputBufferDefaultSize];
-	
-	/// writable data in write buffer
-    int m_outBufLen;
-	
     /// read buffer, it is a loop buffer
     char m_inBuf[kCCSocketInputBufferDefaultSize];
 	
 	/// available data in read buffer
     int m_inBufLen;
 	
-	/// start reading pos of read buffer, between 0 and (size - 1)
-    int m_inBufStart;
-	
-	/// tag of this socket
-    int m_tag;
-	
-	/// true means socket is connected
-	bool m_connected;
+	/// block time for waiting socket connection
+	int m_blockSec;
+    
+    /// pthread mutex
+    pthread_mutex_t m_mutex;
 	
 private:
+	// we wait here until socket is connected or failed
+	static void* tcpThreadEntry(void* arg);
+	
 	/// receive data from socket until no more data or buffer full, or error
 	bool recvFromSock();
 	
@@ -78,9 +72,9 @@ private:
 	
 	/// close socket
     void closeSocket();
-	
-	/// set connected flag
-	void setConnected(bool flag) { m_connected = flag; }
+    
+    /// compact in buf
+    void compactInBuf(int consumed);
 	
 protected:
 	/**
@@ -112,40 +106,42 @@ public:
 	static CCTCPSocket* create(const string& hostname, int port, int tag = -1, int blockSec = kCCSocketDefaultTimeout, bool keepAlive = false);
 	
 	/**
-	 * send data in a buffer
+	 * add packet to send queue
 	 *
-	 * @param buf buffer
-	 * @param size data to be sent
-	 * @return operation success or failed
+	 * @param p packet
 	 */
-    bool sendData(void* buf, int size);
+    void sendPacket(CCPacket* p);
 	
 	/**
-	 * receive data and put into a buffer
-	 * 
-	 * @param buf buffer large enough to hold data
-	 * @param size wanted data length
-	 * @return actual read data size, or -1 if fail to read a complete packet
-	 */
-    int receiveData(void* buf, int size);
-	
-	/// flush write buffer, send them now
-    bool flush();
-	
-	/// check is there any data can be read
+     * check is there any data can be read
+     *
+     * @return true means socket is valid and readable, false means socket is closed.
+     */
     bool hasAvailable();
 	
-	/// destroy socket
-    void destroy();
-	
-	/// get socket handle
-    int getSocket() const { return m_sock; }
+	/// socket handle
+    CC_SYNTHESIZE_READONLY(int, m_socket, Socket);
     
-	/// get tag
-    int getTag() { return m_tag; }
-	
-	/// is connected?
-	bool isConnected() { return m_connected; }
+    /// tag
+    CC_SYNTHESIZE_READONLY(int, m_tag, Tag);
+    
+    /// hub reference
+    CC_SYNTHESIZE(CCTCPSocketHub*, m_hub, Hub);
+    
+    /// connected
+    CC_SYNTHESIZE_READONLY_BOOL(m_connected, Connected);
+    
+    /// stop
+    CC_SYNTHESIZE_BOOL(m_stop, Stop);
+    
+    /// server name
+    CC_SYNTHESIZE_READONLY_PASS_BY_REF(string, m_hostname, Hostname);
+    
+    /// port
+    CC_SYNTHESIZE_READONLY(int, m_port, Port);
+    
+    /// send queue
+    CC_SYNTHESIZE_READONLY_PASS_BY_REF(CCArray, m_sendQueue, SendQueue);
 };
 
 NS_CC_END

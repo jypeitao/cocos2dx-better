@@ -26,34 +26,47 @@
 NS_CC_BEGIN
 
 #define DEFAULT_SIZE 0x1000
-#define DEFAULT_INCREASE_SIZE 200
 
 CCByteBuffer::CCByteBuffer() :
 m_buffer(NULL),
 m_readPos(0),
-m_writePos(0) {
+m_writePos(0),
+m_external(false) {
 	reserve(DEFAULT_SIZE);
 }
 
 CCByteBuffer::CCByteBuffer(size_t res) :
 m_buffer(NULL),
 m_readPos(0),
-m_writePos(0) {
+m_writePos(0),
+m_external(false) {
 	reserve(res);
 }
 
 CCByteBuffer::CCByteBuffer(const CCByteBuffer& b) :
 m_buffer(NULL),
 m_readPos(0),
-m_writePos(0) {
+m_writePos(0),
+m_external(false) {
 	reserve(b.m_bufferSize);
 	memcpy(b.m_buffer, m_buffer, b.m_writePos);
 	m_readPos = b.m_readPos;
 	m_writePos = b.m_writePos;
 }
 
+CCByteBuffer::CCByteBuffer(const char* buf, size_t bufSize, size_t dataLen) :
+m_buffer((uint8*)buf),
+m_readPos(0),
+m_writePos(dataLen),
+m_external(true),
+m_bufferSize(bufSize) {
+    
+}
+
 CCByteBuffer::~CCByteBuffer() {
-	CC_SAFE_FREE(m_buffer);
+    if(!m_external) {
+        CC_SAFE_FREE(m_buffer);
+    }
 }
 
 CCByteBuffer* CCByteBuffer::create() {
@@ -67,6 +80,9 @@ CCByteBuffer* CCByteBuffer::create(size_t res) {
 }
 
 void CCByteBuffer::reserve(size_t res) {
+    if(m_external)
+        return;
+    
 	if(m_buffer)
 		m_buffer = (uint8*)realloc(m_buffer, res);
 	else
@@ -75,13 +91,12 @@ void CCByteBuffer::reserve(size_t res) {
 	m_bufferSize = res;
 }
 
-template<typename T>
-T CCByteBuffer::read() {
-	if(m_readPos + sizeof(T) > m_writePos)
-		return (T)0;
-	T ret = *(T*)&m_buffer[m_readPos];
-	m_readPos += sizeof(T);
-	return ret;
+void CCByteBuffer::compact() {
+    if(m_readPos > 0) {
+        memmove(m_buffer, m_buffer + m_readPos, available());
+        m_writePos -= m_readPos;
+        m_readPos = 0;
+    }
 }
 
 size_t CCByteBuffer::read(uint8 * buffer, size_t len) {
@@ -119,7 +134,7 @@ void CCByteBuffer::readPascalString(string& dest) {
 void CCByteBuffer::readLine(string& dest) {
 	dest.clear();
 	char c;
-	while(true)	{
+	while(m_readPos < m_bufferSize)	{
 		c = read<char>();
 		if(c == '\r')
 			continue;
@@ -129,77 +144,13 @@ void CCByteBuffer::readLine(string& dest) {
 	}
 }
 
-template<typename T>
-size_t CCByteBuffer::readVector(size_t vsize, vector<T>& v) {
-	v.clear();
-	while(vsize--) {
-		T t = read<T>();
-		v.push_back(t);
-	}
-	return v.size();
-}
-
-template<typename T>
-size_t CCByteBuffer::writeVector(const vector<T>& v) {
-	for(typename vector<T>::const_iterator i = v.begin(); i != v.end(); i++) {
-		write<T>(*i);
-	}
-	return v.size();
-}
-
-template<typename T>
-size_t CCByteBuffer::readList(size_t vsize, list<T>& v) {
-	v.clear();
-	while(vsize--) {
-		T t = read<T>();
-		v.push_back(t);
-	}
-	return v.size();
-}
-
-template<typename T>
-size_t CCByteBuffer::writeList(const list<T>& v) {
-	for(typename list<T>::const_iterator i = v.begin(); i != v.end(); i++) {
-		write<T>(*i);
-	}
-	return v.size();
-}
-
-template <typename K, typename V>
-size_t CCByteBuffer::readMap(size_t msize, map<K, V>& m) {
-	m.clear();
-	while(msize--) {
-		K k = read<K>();
-		V v = read<V>();
-		m.insert(make_pair(k, v));
-	}
-	return m.size();
-}
-
-template <typename K, typename V>
-size_t CCByteBuffer::writeMap(const map<K, V>& m) {
-	for(typename map<K, V>::const_iterator i = m.begin(); i != m.end(); i++) {
-		write<K>(i->first);
-		write<V>(i->second);
-	}
-	return m.size();
-}
-
-template<typename T>
-void CCByteBuffer::write(const T& data) {
-	size_t new_size = m_writePos + sizeof(T);
-	if(new_size > m_bufferSize) {
-		new_size = (new_size / DEFAULT_INCREASE_SIZE + 1) * DEFAULT_INCREASE_SIZE;
-		reserve(new_size);
-	}
-	
-	*(T*)&m_buffer[m_writePos] = data;
-	m_writePos += sizeof(T);
-}
-
 void CCByteBuffer::write(const uint8* data, size_t size) {
 	size_t new_size = m_writePos + size;
 	if(new_size > m_bufferSize) {
+        if(m_external) {
+            CCLOGWARN("external mode: buffer size is not enough to write");
+            return;
+        }
 		new_size = (new_size / DEFAULT_INCREASE_SIZE + 1) * DEFAULT_INCREASE_SIZE;
 		reserve(new_size);
 	}
@@ -213,20 +164,41 @@ void CCByteBuffer::write(const string& value) {
 }
 
 void CCByteBuffer::writeCString(const string& value) {
-	ensureCanWrite(value.length() + 1);
+    if(m_writePos + value.length() + 1 > m_bufferSize) {
+        if(m_external) {
+            CCLOGWARN("external mode: buffer size is not enough to write");
+            return;
+        }
+        ensureCanWrite(value.length() + 1);
+    }
+    
 	memcpy(&m_buffer[m_writePos], value.c_str(), value.length() + 1);
 	m_writePos += (value.length() + 1);
 }
 
 void CCByteBuffer::writePascalString(const string& value) {
-	ensureCanWrite(value.length() + sizeof(uint16));
+    if(m_writePos + value.length() + sizeof(uint16) > m_bufferSize) {
+        if(m_external) {
+            CCLOGWARN("external mode: buffer size is not enough to write");
+            return;
+        }
+        ensureCanWrite(value.length() + sizeof(uint16));
+    }
+	
 	write<uint16>(value.length());
 	memcpy(&m_buffer[m_writePos], value.c_str(), value.length());
 	m_writePos += value.length();
 }
 
 void CCByteBuffer::writeLine(const string& value) {
-	ensureCanWrite(value.length() + 2 * sizeof(char));
+    if(m_writePos + value.length() + 2 * sizeof(char) > m_bufferSize) {
+        if(m_external) {
+            CCLOGWARN("external mode: buffer size is not enough to write");
+            return;
+        }
+        ensureCanWrite(value.length() + 2 * sizeof(char));
+    }
+    
 	memcpy(&m_buffer[m_writePos], value.c_str(), value.length());
 	m_writePos += value.length();
 	write<char>('\r');
@@ -239,7 +211,12 @@ void CCByteBuffer::skip(size_t len) {
 	m_readPos += len;
 }
 
-void CCByteBuffer::ensureCanWrite(uint32 size) {
+void CCByteBuffer::revoke(size_t len) {
+    m_readPos -= len;
+    m_readPos = MAX(0, m_readPos);
+}
+
+void CCByteBuffer::ensureCanWrite(size_t size) {
 	size_t new_size = m_writePos + size;
 	if(new_size > m_bufferSize) {
 		new_size = (new_size / DEFAULT_INCREASE_SIZE + 1) * DEFAULT_INCREASE_SIZE;

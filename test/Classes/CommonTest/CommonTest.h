@@ -37,6 +37,19 @@ public:
     virtual string subtitle();
 };
 
+class CommonCallFuncT : public CommonDemo
+{
+private:
+    CCLabelTTF* m_label;
+    
+private:
+    void randomChangeLabel(int n);
+    
+public:
+    virtual void onEnter();
+    virtual string subtitle();
+};
+
 class CommonCatmullRomSprite : public CommonDemo
 {
 private:
@@ -52,14 +65,57 @@ public:
     virtual void ccTouchCancelled(CCTouch *pTouch, CCEvent *pEvent);
 };
 
-class CommonClipInOut : public CommonDemo
+class CommonGradientSprite : public CommonDemo
 {
 public:
     virtual void onEnter();
     virtual string subtitle();
 };
 
-class CommonGradientSprite : public CommonDemo
+class CommonGridView : public CommonDemo, public CCGridViewDataSource, public CCGridViewDelegate
+{
+public:
+    virtual void onEnter();
+    virtual string subtitle();
+    
+    // virtual tabel view
+    virtual void scrollViewDidScroll(CCScrollView* view) {}
+    virtual void scrollViewDidZoom(CCScrollView* view) {}
+    virtual void tableCellTouched(CCGridView* table, CCTableViewCell* cell);
+    virtual CCSize tableCellSizeForIndex(CCGridView *table, unsigned int idx);
+    virtual CCTableViewCell* tableCellAtIndex(CCGridView *table, unsigned int idx);
+    virtual unsigned int numberOfCellsInTableView(CCGridView *table);
+    virtual void tableCellHighlight(CCGridView* table, CCTableViewCell* cell);
+    virtual void tableCellUnhighlight(CCGridView* table, CCTableViewCell* cell);
+};
+
+class CommonImagePicker : public CommonDemo, public CCImagePickerCallback
+{
+private:
+	CCSprite* m_photo;
+	
+public:
+    virtual void onEnter();
+    virtual string subtitle();
+	virtual bool ccTouchBegan(CCTouch *pTouch, CCEvent *pEvent);
+	
+	// image picker callback
+	virtual void onImagePicked(const string& fullPath, int w, int h);
+	virtual void onImagePickingCancelled();
+};
+
+class CommonLaserSprite : public CommonDemo
+{
+private:
+	CCLaserSprite* m_laser1;
+	
+public:
+    virtual void onEnter();
+    virtual string subtitle();
+	virtual void update(float delta);
+};
+
+class CommonLayerClip : public CommonDemo
 {
 public:
     virtual void onEnter();
@@ -85,15 +141,6 @@ class CommonMenuItemColor : public CommonDemo
 public:
     virtual void onEnter();
     virtual string subtitle();
-};
-
-class CommonMissile : public CommonDemo
-{
-public:
-    virtual void onEnter();
-    virtual string subtitle();
-    
-    void onHit();
 };
 
 class CommonProgressHUD : public CommonDemo
@@ -157,19 +204,41 @@ public:
     virtual string subtitle();
 };
 
-class CommonShake : public CommonDemo
-{	
+class CommonScreenshot : public CommonDemo
+{
+private:
+	CCSprite* m_shot;
+	
+public:
+    virtual void onEnter();
+    virtual string subtitle();
+	virtual bool ccTouchBegan(CCTouch *pTouch, CCEvent *pEvent);
+};
+
+class CommonScrollBar : public CommonDemo
+{
 public:
     virtual void onEnter();
     virtual string subtitle();
 };
 
-class CommonScrollView : public CommonDemo
+class CommonScrollBar2 : public CommonDemo
 {
 public:
     virtual void onEnter();
     virtual string subtitle();
-	CCLayer* createScrollContent(const CCSize& size);
+    CCLayer* createScrollContent(const CCSize& size);
+};
+
+class CommonSecureUserDefault : public CommonDemo
+{
+public:
+    virtual void onEnter();
+    virtual string subtitle();
+    
+    // decrypt and encrypt function
+    static const char* decrypt(const char* enc, int encLen, int* plainLen);
+    static const char* encrypt(const char* plain, int plainLen, int* encLen);
 };
 
 class CommonSlider : public CommonDemo
@@ -195,13 +264,6 @@ public:
     virtual void onEnter();
     virtual string subtitle();
     virtual bool ccTouchBegan(CCTouch *pTouch, CCEvent *pEvent);
-};
-
-class CommonTreeFadeInOut : public CommonDemo
-{
-public:
-    virtual void onEnter();
-    virtual string subtitle();
 };
 
 #endif

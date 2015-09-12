@@ -30,6 +30,9 @@
 #if CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID
 	#include <jni.h>
 #endif
+#if CC_TARGET_PLATFORM == CC_PLATFORM_IOS
+    #import <UIKit/UIKit.h>
+#endif
 
 using namespace std;
 
@@ -49,10 +52,6 @@ private:
     
 private:
 	static unsigned char UnitScalarToByte(float x);
-    
-#if CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID
-    static jbyteArray getFirstSignatureBytes();
-#endif
 	
 public:
     /**
@@ -73,6 +72,9 @@ public:
 	 */
 	static const char* copy(const char* src, int start, size_t len);
     
+	/// trim leading and tail space character
+	static string trim(const string& s);
+	
 	/// convert string to lowercase
 	static void toLowercase(string& s);
     
@@ -87,9 +89,33 @@ public:
 	 *
 	 * @param s string reference, its content will be modified
 	 * @param c char to be replaced
-	 * @param sub char to be replaced to
+	 * @param sub char will be replacement to
 	 */
     static void replaceChar(string& s, char c, char sub);
+    
+    /**
+	 * Replace a sub string with other string
+	 *
+	 * @param s string reference, its content will be modified
+	 * @param c sub string to be replaced
+	 * @param sub string will be replacement to
+	 */
+    static string replace(string& s, const string& c, const string& sub);
+    
+    /**
+     * remove char from a string
+     * 
+     * @param s string to be modified
+     * @param c char to be removed
+     */
+    static void removeChar(string& s, char c);
+	
+	/// decode html entities in a string and return a decoded string
+	static string decodeHtmlEntities(const string& src);
+    
+    /// convert a chinese string into pinyin string, s must be in utf-8 encoding
+    /// currently gbk chinese is not supported
+    static string getPinyin(const string& s);
     
     /**
      * get digit of a number. For example: 0 returns 1, 12 returns 2,
@@ -142,21 +168,24 @@ public:
 	 */
 	static string deletePathExtension(const string& path);
 	
-	/**
-	 * map path to different platform, for example, a path "/sdcard/a.png" will be:
-	 * 1. in android, it is /sdcard/a.png
-	 * 2. in iOS and MacOSX, it will be ~/Documents/sdcard/a.png
-	 * 3. in Windows, it will be [Executable Dir]/sdcard/a.png
-	 *
-	 * for iOS and MacOSX, if path is a relative path, then it will be mapped to app folder, for example, 
-	 * a path "sdcard/a.png" will be:
-	 * 1. in iOS, it will be [app path]/sdcard/a.png
-	 * 2. in Mac OS X, it will [app path]/Contents/Resources/sdcard/a.png
-	 */
-	static string mapLocalPath(string path);
+	/// get path extension, with a dot started string. or empty string if no extension
+	static string getPathExtension(const string& path);
 	
 	/// get parent path of a path
-	static string getParentPath(string path);
+	static string getParentPath(const string& path);
+    
+    /**
+     * map a relative path to absolute external path, do nothing if path is absolute
+     * in iOS, path will be appended to ~/Documents
+     * in Android, path will be appended to internal storage folder
+     */
+    static string externalize(const string& path);
+    
+    /**
+     * Map path to external path, and then check the path existence. If external path is not
+     * existent, it will return the cocos2d-x full path.
+     */
+    static string getExternalOrFullPath(const string& path);
 	
 	/// get package name, in iOS, it retuns bundle id
 	static string getPackageName();
@@ -174,6 +203,9 @@ public:
     static float lerp(float a, float b, float p) {
         return a * (1 - p) + b * p;
     }
+    
+    /// rect contains another rect?
+    static bool containsRect(const CCRect& r1, const CCRect& r2);
 	
 	/**
 	 * create intermediate folders for a path
@@ -181,7 +213,7 @@ public:
 	 * @param path must be an absolute path
 	 * @return true means successful
 	 */
-	static bool createIntermediateFolders(string path);
+	static bool createIntermediateFolders(const string& path);
 	
 	/**
 	 * check path existence
@@ -189,7 +221,7 @@ public:
 	 * @param path must be an absolute path
 	 * @return true means path is existent
 	 */
-	static bool isPathExistent(string path);
+	static bool isPathExistent(const string& path);
 	
 	/**
 	 * create a folder at specified absolute path, its parent folder should be existent and this
@@ -198,10 +230,10 @@ public:
 	 * @param path must be an absolute path
 	 * @return true means successful
 	 */
-	static bool createFolder(string path);
+	static bool createFolder(const string& path);
 	
 	/// delete a file
-	static bool deleteFile(string path);
+	static bool deleteFile(const string& path);
 	
 	/// convert rgb to hsv
 	static ccColorHSV ccc32hsv(ccColor3B c);
@@ -232,9 +264,18 @@ public:
 	
 	/// get bounding box in world space
 	static CCRect getBoundingBoxInWorldSpace(CCNode* node);
-	
-	/// change opacity recursively
-	static void setTreeOpacity(CCNode* n, int o);
+    
+    /**
+     * most of time, we just need the center part of a scalable image,
+     * so this method auto return center rect for you
+     */
+    static CCRect getCenterRect(const string& frameName);
+    
+    /**
+     * most of time, we just need the center part of a scalable image,
+     * so this method auto return center rect for you
+     */
+    static CCRect getCenterRect(CCSpriteFrame* f);
     
     /// get scene to which a node belongs
     static CCScene* getScene(CCNode* n);
@@ -254,6 +295,9 @@ public:
     /// get a good place to save app internal files
     static string getInternalStoragePath();
     
+    /// get available size of mobile phone storage
+    static int64_t getAvailableStorageSize();
+    
     /// current time milliseconds from 1970-1-1
     static int64_t currentTimeMillis();
     
@@ -272,7 +316,52 @@ public:
      * @param sep separator character
      * @return a const vector, must copy it if you want to keep its content
      */
-    static StringList& componentsOfString(const string& s, const char sep);
+    static CCArray& componentsOfString(const string& s, const char sep);
+    
+    /**
+     * split string into components by a separator
+     * returned CCArray contains CCInteger object
+     * the array is shared, you must copy its content if you want to keep content for later use
+     *
+     * @param s string
+     * @param sep separator character
+     * @return a const CCArray, must copy it if you want to keep its content
+     */
+    static CCArray& intComponentsOfString(const string& s, const char sep);
+    
+    /**
+     * split string into components by a separator
+     * returned CCArray contains CCFloat object
+     * the array is shared, you must copy its content if you want to keep content for later use
+     *
+     * @param s string
+     * @param sep separator character
+     * @return a const CCArray, must copy it if you want to keep its content
+     */
+    static CCArray& floatComponentsOfString(const string& s, const char sep);
+    
+    /**
+     * split string into components by a separator
+     * returned CCArray contains CCBool object
+     * the array is shared, you must copy its content if you want to keep content for later use
+     *
+     * @param s string
+     * @param sep separator character
+     * @return a const CCArray, must copy it if you want to keep its content
+     */
+    static CCArray& boolComponentsOfString(const string& s, const char sep);
+    
+    /// generate a string which is a join of all strings in an CCArray
+    static string joinString(const CCArray& a, const char sep);
+    
+    /// generate a string which is a join of all integer in an CCArray
+    static string joinInt(const CCArray& a, const char sep);
+    
+    /// generate a string which is a join of all float in an CCArray
+    static string joinFloat(const CCArray& a, const char sep);
+    
+    /// generate a string which is a join of all boolean in an CCArray
+    static string joinBool(const CCArray& a, const char sep);
     
     /**
      * parse a CCPoint from a string in format {x,y}, such as {3.2,3.4}.
@@ -354,6 +443,14 @@ public:
 	 * @return array pointer contains all children node whose tag matched, array is auto released
 	 */
 	static CCArray* getChildrenByTag(CCNode* parent, int tag);
+	
+	/**
+	 * remove child node with specified tag, it can remove more than one child as long as the tag matched
+	 * 
+	 * @param parent parent node
+	 * @param tag tag
+	 */
+	static void removeChildrenByTag(CCNode* parent, int tag);
     
     /**
      * get CPU freqency, in Hz
@@ -365,6 +462,22 @@ public:
     
     /// remove a default setting, CCUserDefault doesn't provide this feature
     static void purgeDefaultForKey(const string& key);
+    
+    /**
+	 * Calculate how many bytes of a utf-8 encoded character
+	 *
+	 * @param c first byte of character in utf-8 encoding
+	 * @return byte length of this character
+	 */
+	static int getUTF8Bytes(unsigned char c);
+    
+    /**
+	 * Get count of utf-8 character in a string
+	 *
+	 * @param s utf-8 string
+	 * @return count of utf-8 character
+	 */
+	static int strlen8(const char* s);
     
     /**
      * Measure a rich string size without creating a OpenGL texture. Measured size
@@ -379,6 +492,9 @@ public:
      * @param shadowOffsetX shadow x offset, optional
      * @param shadowOffsetY shadow y offset, optional
      * @param strokeSize border line width, optional
+     * @param lineSpacing line spacing, optional
+     * @param globalImageScaleFactor global image scale factor which applies to all images in this rich label, default is 1
+	 * @param decryptFunc if label has embedded images and they are encrypted, you must provide a decrypt function
      */
     static CCSize measureRichString(const char* pText,
                                     const char* pFontName = NULL,
@@ -386,7 +502,10 @@ public:
                                     int maxWidth = 0,
                                     float shadowOffsetX = 0,
                                     float shadowOffsetY = 0,
-                                    float strokeSize = 0);
+                                    float strokeSize = 0,
+                                    float lineSpacing = 0,
+                                    float globalImageScaleFactor = 1,
+									CC_DECRYPT_FUNC decryptFunc = NULL);
     
     /// start to play internal music randomly
     static void playInternalMusic();
@@ -396,6 +515,71 @@ public:
 	
 	/// is internal music playing
 	static bool isInternalMusicPlaying();
+	
+	/**
+	 * capture screen and save it to a image file. The file type will auto determined by extension, and 
+	 * only jpg, jpeg, png is supported. Other extensions will be ignored and save as jpg. The image file will be
+	 * same size as window size (also known as design size).
+	 *
+	 * @param root the start node to be captured, so that you can only capture part of screen. However, final image
+	 *		file is always window size. If root is NULL, whole screen will be captured.
+	 * @param path the relative path of image file, it will be mapped to platform writable path. In iOS, it is ~/Documents,
+	 *		in Android, it is cache dir
+	 * @param needStencil true if you want a stencil attachment, by default it is false
+	 * @return full path of saved image file
+	 */
+	static string makeScreenshot(CCNode* root, const string& path, bool needStencil = false);
+    
+    /**
+	 * Show a confirm dialog and the dialog is backed by system, so its UI is platform-dependent
+	 *
+	 * @param title title text
+	 * @param msg content text
+	 * @param positiveButton text of positive button, default is NULL which means it is "OK"
+	 * @param negativeButton text of negative button, default is NULL which means it is "Cancel"
+	 * @param onOK callback when ok button is clicked
+	 * @param onCancel callback when cancel button is clicked
+	 */
+	static void showSystemConfirmDialog(const char* title, const char* msg, const char* positiveButton = NULL, const char* negativeButton = NULL, CCCallFunc* onOK = NULL, CCCallFunc* onCancel = NULL);
+	
+	/**
+	 * open app in platform-specific store
+	 *
+	 * \note 
+	 * for now, in android, it just open google play web page. For other third-party android market, it is
+	 * quite a bit challenge to support them.
+	 *
+	 * @param appId the app id, in iOS, it is a number identifier you should get it from itunes connect.
+	 *		but for android, this parameter is ignored.
+	 */
+	static void openAppInStore(const string& appId);
+    
+    /// open an url
+    static void openUrl(const string& url);
+    
+    /// get app version name
+    static string getAppVersion();
+    
+    /// get device type
+    static string getDeviceType();
+    
+    /**
+     * get system version nubmer
+     *
+     * \note
+     * for iOS, it convert system major version int
+     * for Android, it returns Build.VERSION.SDK_INT
+     * for Mac, it returns 0
+     */
+    static int getSystemVersionInt();
+    
+    /**
+     * get mac address, if failed, return 00:00:00:00:00:00. 
+     * 
+     * \note
+     * for iOS 7.0+, you can't get mac address
+     */
+    static string getMacAddress();
 	
 #if CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID
 	/// get JNIEnv
@@ -420,7 +604,12 @@ public:
     static void putParcelableExtra(jobject intent, const char* name, jobject value);
     static void startActivity(jobject intent);
     static void sendBroadcast(jobject intent);
-#endif
+#endif // #if CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID
+	
+#if CC_TARGET_PLATFORM == CC_PLATFORM_IOS
+	/// find view controller which contains given view
+	static UIViewController* findViewController(UIView* view);
+#endif // #if CC_TARGET_PLATFORM == CC_PLATFORM_IOS
 };
 
 NS_CC_END

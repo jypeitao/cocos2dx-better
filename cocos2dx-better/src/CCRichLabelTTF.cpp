@@ -51,19 +51,29 @@ m_hAlignment(kCCTextAlignmentCenter),
 m_vAlignment(kCCVerticalTextAlignmentTop),
 m_pFontName(NULL),
 m_fFontSize(0.0),
+m_realLength(0),
+m_lineSpacing(0),
+m_elapsed(0),
 m_string(""),
+m_updateScheduled(false),
 m_shadowEnabled(false),
 m_shadowColor(0xff333333),
 m_strokeEnabled(false),
 m_textFillColor(ccWHITE),
+m_globalImageScaleFactor(1),
 m_stateListener(NULL),
+m_toCharIndex(-1),
+m_defaultTarget(NULL),
+m_loopFunc(NULL),
+m_decryptFunc(NULL),
 m_textChanging(true) {
 	m_stateListener = new CCRichLabelTTFLinkStateSynchronizer(this);
 }
 
-CCRichLabelTTF::~CCRichLabelTTF()
-{
+CCRichLabelTTF::~CCRichLabelTTF() {
     CC_SAFE_DELETE(m_pFontName);
+    CC_SAFE_RELEASE(m_loopFunc);
+    CC_SAFE_RELEASE(m_defaultTarget);
 	
 	// release callfunc
 	CCMenu* menu = (CCMenu*)getChildByTag(TAG_MENU);
@@ -84,10 +94,10 @@ void CCRichLabelTTF::reloadAll() {
     CCTextureCache_richlabel::reloadAllTextures();
 }
 
-CCRichLabelTTF * CCRichLabelTTF::create()
+CCRichLabelTTF * CCRichLabelTTF::create(CC_DECRYPT_FUNC decryptFunc)
 {
     CCRichLabelTTF * pRet = new CCRichLabelTTF();
-    if (pRet && pRet->init())
+    if (pRet && pRet->init(decryptFunc))
     {
         pRet->autorelease();
     }
@@ -98,24 +108,24 @@ CCRichLabelTTF * CCRichLabelTTF::create()
     return pRet;
 }
 
-CCRichLabelTTF * CCRichLabelTTF::create(const char *string, const char *fontName, float fontSize)
+CCRichLabelTTF * CCRichLabelTTF::create(const char *string, const char *fontName, float fontSize, CC_DECRYPT_FUNC decryptFunc)
 {
     return CCRichLabelTTF::create(string, fontName, fontSize,
-                              CCSizeZero, kCCTextAlignmentCenter, kCCVerticalTextAlignmentTop);
+                              CCSizeZero, kCCTextAlignmentCenter, kCCVerticalTextAlignmentTop, decryptFunc);
 }
 
 CCRichLabelTTF * CCRichLabelTTF::create(const char *string, const char *fontName, float fontSize,
-                                const CCSize& dimensions, CCTextAlignment hAlignment)
+                                const CCSize& dimensions, CCTextAlignment hAlignment, CC_DECRYPT_FUNC decryptFunc)
 {
-    return CCRichLabelTTF::create(string, fontName, fontSize, dimensions, hAlignment, kCCVerticalTextAlignmentTop);
+    return CCRichLabelTTF::create(string, fontName, fontSize, dimensions, hAlignment, kCCVerticalTextAlignmentTop, decryptFunc);
 }
 
 CCRichLabelTTF* CCRichLabelTTF::create(const char *string, const char *fontName, float fontSize,
                                const CCSize &dimensions, CCTextAlignment hAlignment,
-                               CCVerticalTextAlignment vAlignment)
+                               CCVerticalTextAlignment vAlignment, CC_DECRYPT_FUNC decryptFunc)
 {
     CCRichLabelTTF *pRet = new CCRichLabelTTF();
-    if(pRet && pRet->initWithString(string, strcmp(fontName, "") == 0 ? "Helvetica" : fontName , fontSize, dimensions, hAlignment, vAlignment))
+    if(pRet && pRet->initWithString(string, strcmp(fontName, "") == 0 ? "Helvetica" : fontName , fontSize, dimensions, hAlignment, vAlignment, decryptFunc))
     {
         pRet->autorelease();
         return pRet;
@@ -124,26 +134,26 @@ CCRichLabelTTF* CCRichLabelTTF::create(const char *string, const char *fontName,
     return NULL;
 }
 
-bool CCRichLabelTTF::init()
+bool CCRichLabelTTF::init(CC_DECRYPT_FUNC decryptFunc)
 {
-    return this->initWithString("", "Helvetica", 12);
+    return this->initWithString("", "Helvetica", 12, decryptFunc);
 }
 
 bool CCRichLabelTTF::initWithString(const char *label, const char *fontName, float fontSize,
-                                const CCSize& dimensions, CCTextAlignment alignment)
+                                const CCSize& dimensions, CCTextAlignment alignment, CC_DECRYPT_FUNC decryptFunc)
 {
-    return this->initWithString(label, fontName, fontSize, dimensions, alignment, kCCVerticalTextAlignmentTop);
+    return this->initWithString(label, fontName, fontSize, dimensions, alignment, kCCVerticalTextAlignmentTop, decryptFunc);
 }
 
-bool CCRichLabelTTF::initWithString(const char *label, const char *fontName, float fontSize)
+bool CCRichLabelTTF::initWithString(const char *label, const char *fontName, float fontSize, CC_DECRYPT_FUNC decryptFunc)
 {
     return this->initWithString(label, fontName, fontSize,
-                                CCSizeZero, kCCTextAlignmentLeft, kCCVerticalTextAlignmentTop);
+                                CCSizeZero, kCCTextAlignmentLeft, kCCVerticalTextAlignmentTop, decryptFunc);
 }
 
 bool CCRichLabelTTF::initWithString(const char *string, const char *fontName, float fontSize,
                                 const CCSize &dimensions, CCTextAlignment hAlignment,
-                                CCVerticalTextAlignment vAlignment)
+                                CCVerticalTextAlignment vAlignment, CC_DECRYPT_FUNC decryptFunc)
 {
     if (CCGradientSprite::init())
     {
@@ -155,6 +165,7 @@ bool CCRichLabelTTF::initWithString(const char *string, const char *fontName, fl
         m_vAlignment  = vAlignment;
         m_pFontName   = new std::string(fontName);
         m_fFontSize   = fontSize;
+		m_decryptFunc = decryptFunc;
         
         this->setString(string);
         
@@ -318,7 +329,7 @@ bool CCRichLabelTTF::updateTexture()
     if (!tex)
         return false;
     
-#if (CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID) || (CC_TARGET_PLATFORM == CC_PLATFORM_IOS)
+#if CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID || CC_TARGET_PLATFORM == CC_PLATFORM_IOS || CC_TARGET_PLATFORM == CC_PLATFORM_MAC
     
 	ccRichFontDefinition texDef = _prepareTextDefinition(true);
 	tex->initWithRichString( m_string.c_str(), &texDef );
@@ -344,6 +355,21 @@ bool CCRichLabelTTF::updateTexture()
     CCRect rect =CCRectZero;
     rect.size   = m_pobTexture->getContentSize();
     this->setTextureRect(rect);
+    
+    // save length
+    m_realLength = tex->getRealLength();
+	
+	// save image rects
+	const vector<CCRect>& imageRects = tex->getImageRects();
+	m_imageRects.clear();
+	m_imageRects.insert(m_imageRects.begin(), imageRects.begin(), imageRects.end());
+	for(vector<CCRect>::iterator iter = m_imageRects.begin(); iter != m_imageRects.end(); iter++) {
+		CCRect& r = *iter;
+		r.origin.x /= CC_CONTENT_SCALE_FACTOR();
+		r.origin.y /= CC_CONTENT_SCALE_FACTOR();
+		r.size.width /= CC_CONTENT_SCALE_FACTOR();
+		r.size.height /= CC_CONTENT_SCALE_FACTOR();
+	}
 	
 	// create link menu
 	CCMenu* menu = (CCMenu*)getChildByTag(TAG_MENU);
@@ -389,13 +415,47 @@ bool CCRichLabelTTF::updateTexture()
 							  p.y / CC_CONTENT_SCALE_FACTOR()));
 	}
     
+    // if has color transition or something else which need time, start to update
+    if(tex->isNeedTime()) {
+        if(!m_updateScheduled) {
+            scheduleUpdate();
+            m_updateScheduled = true;
+        }
+    } else {
+        if(m_updateScheduled) {
+            unscheduleUpdate();
+            m_updateScheduled = false;
+        }
+    }
+    
     //ok
     return true;
 }
 
+CCRect CCRichLabelTTF::getImageBound(int index) {
+	if(index < 0 || index >= m_imageRects.size())
+		return CCRectZero;
+	
+	return m_imageRects.at(index);
+}
+
+CCRect CCRichLabelTTF::getImageBoundInParentSpace(int index) {
+	CCRect r = getImageBound(index);
+	CCAffineTransform t = nodeToParentTransform();
+	r = CCRectApplyAffineTransform(r, t);
+	return r;
+}
+
+CCRect CCRichLabelTTF::getImageBoundInWorldSpace(int index) {
+	CCRect r = getImageBound(index);
+	CCAffineTransform t = nodeToWorldTransform();
+	r = CCRectApplyAffineTransform(r, t);
+	return r;
+}
+
 void CCRichLabelTTF::enableShadow(const CCSize &shadowOffset, int shadowColor, float shadowBlur, bool updateTexture)
 {
-#if (CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID) || (CC_TARGET_PLATFORM == CC_PLATFORM_IOS)
+#if CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID || CC_TARGET_PLATFORM == CC_PLATFORM_IOS || CC_TARGET_PLATFORM == CC_PLATFORM_MAC
     
 	bool valueChanged = false;
 	
@@ -431,14 +491,14 @@ void CCRichLabelTTF::enableShadow(const CCSize &shadowOffset, int shadowColor, f
 	}
     
 #else
-	CCAssert(false, "Currently only supported on iOS and Android!");
+	CCAssert(false, "Operation is not supported for your platform");
 #endif
     
 }
 
 void CCRichLabelTTF::disableShadow(bool updateTexture)
 {
-#if (CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID) || (CC_TARGET_PLATFORM == CC_PLATFORM_IOS)
+#if CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID || CC_TARGET_PLATFORM == CC_PLATFORM_IOS || CC_TARGET_PLATFORM == CC_PLATFORM_MAC
     
 	if (m_shadowEnabled)
 	{
@@ -450,14 +510,13 @@ void CCRichLabelTTF::disableShadow(bool updateTexture)
 	}
     
 #else
-	CCAssert(false, "Currently only supported on iOS and Android!");
+	CCAssert(false, "Operation is not supported for your platform");
 #endif
 }
 
 void CCRichLabelTTF::enableStroke(const ccColor3B &strokeColor, float strokeSize, bool updateTexture)
 {
-#if (CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID) || (CC_TARGET_PLATFORM == CC_PLATFORM_IOS)
-    
+#if CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID || CC_TARGET_PLATFORM == CC_PLATFORM_IOS || CC_TARGET_PLATFORM == CC_PLATFORM_MAC
 	bool valueChanged = false;
 	
 	if(m_strokeEnabled == false)
@@ -484,14 +543,14 @@ void CCRichLabelTTF::enableStroke(const ccColor3B &strokeColor, float strokeSize
 	}
     
 #else
-	CCAssert(false, "Currently only supported on iOS and Android!");
+	CCAssert(false, "Operation is not supported for your platform");
 #endif
     
 }
 
 void CCRichLabelTTF::disableStroke(bool updateTexture)
 {
-#if (CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID) || (CC_TARGET_PLATFORM == CC_PLATFORM_IOS)
+#if CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID || CC_TARGET_PLATFORM == CC_PLATFORM_IOS || CC_TARGET_PLATFORM == CC_PLATFORM_MAC
     
 	if (m_strokeEnabled)
 	{
@@ -502,14 +561,14 @@ void CCRichLabelTTF::disableStroke(bool updateTexture)
 	}
     
 #else
-	CCAssert(false, "Currently only supported on iOS and Android!");
+	CCAssert(false, "Operation is not supported for your platform");
 #endif
     
 }
 
 void CCRichLabelTTF::setFontFillColor(const ccColor3B &tintColor, bool updateTexture)
 {
-#if (CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID) || (CC_TARGET_PLATFORM == CC_PLATFORM_IOS)
+#if CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID || CC_TARGET_PLATFORM == CC_PLATFORM_IOS || CC_TARGET_PLATFORM == CC_PLATFORM_MAC
 	if (m_textFillColor.r != tintColor.r || m_textFillColor.g != tintColor.g || m_textFillColor.b != tintColor.b)
 	{
 		m_textFillColor = tintColor;
@@ -518,7 +577,7 @@ void CCRichLabelTTF::setFontFillColor(const ccColor3B &tintColor, bool updateTex
 			this->updateTexture();
 	}
 #else
-	CCAssert(false, "Currently only supported on iOS and Android!");
+	CCAssert(false, "Operation is not supported for your platform");
 #endif
 }
 
@@ -537,15 +596,38 @@ ccRichFontDefinition *CCRichLabelTTF::getTextDefinition()
     return tempDefinition;
 }
 
+void CCRichLabelTTF::setGlobalImageScaleFactor(float scale, bool mustUpdateTexture) {
+#if CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID || CC_TARGET_PLATFORM == CC_PLATFORM_IOS || CC_TARGET_PLATFORM == CC_PLATFORM_MAC
+	if (m_globalImageScaleFactor != scale) {
+		m_globalImageScaleFactor = scale;
+		
+		if (mustUpdateTexture)
+			this->updateTexture();
+	}
+#else
+	CCAssert(false, "Operation is not supported for your platform");
+#endif
+}
+
+void CCRichLabelTTF::setLineSpacing(float s, bool mustUpdateTexture) {
+    m_lineSpacing = s;
+    
+    // set this flag so that link item can be updated
+    m_textChanging = true;
+ 
+    if (mustUpdateTexture)
+        this->updateTexture();
+}
+
 void CCRichLabelTTF::_updateWithTextDefinition(ccRichFontDefinition & textDefinition, bool mustUpdateTexture)
 {
     m_tDimensions = CCSizeMake(textDefinition.m_dimensions.width, textDefinition.m_dimensions.height);
     m_hAlignment  = textDefinition.m_alignment;
     m_vAlignment  = textDefinition.m_vertAlignment;
-    
+    m_globalImageScaleFactor = textDefinition.m_globalImageScaleFactor;
     m_pFontName   = new std::string(textDefinition.m_fontName);
     m_fFontSize   = textDefinition.m_fontSize;
-    
+    m_toCharIndex = textDefinition.m_toCharIndex;
     
     // shadow
     if ( textDefinition.m_shadow.m_shadowEnabled )
@@ -569,6 +651,10 @@ void CCRichLabelTTF::_updateWithTextDefinition(ccRichFontDefinition & textDefini
 ccRichFontDefinition CCRichLabelTTF::_prepareTextDefinition(bool adjustForResolution)
 {
     ccRichFontDefinition texDef;
+	
+	texDef.decryptFunc = m_decryptFunc;
+    texDef.m_globalImageScaleFactor = m_globalImageScaleFactor;
+    texDef.m_elapsed = m_elapsed;
     
     if (adjustForResolution)
         texDef.m_fontSize       =  m_fFontSize * CC_CONTENT_SCALE_FACTOR();
@@ -578,7 +664,8 @@ ccRichFontDefinition CCRichLabelTTF::_prepareTextDefinition(bool adjustForResolu
     texDef.m_fontName       = *m_pFontName;
     texDef.m_alignment      =  m_hAlignment;
     texDef.m_vertAlignment  =  m_vAlignment;
-    
+    texDef.m_toCharIndex = m_toCharIndex;
+    texDef.m_lineSpacing = m_lineSpacing;
     
     if (adjustForResolution)
         texDef.m_dimensions     =  CC_SIZE_POINTS_TO_PIXELS(m_tDimensions);
@@ -630,48 +717,27 @@ ccRichFontDefinition CCRichLabelTTF::_prepareTextDefinition(bool adjustForResolu
 }
 
 void CCRichLabelTTF::setLinkTarget(int index, CCCallFunc* func) {
-    // if not found, do nothing
-    CCMenu* menu = (CCMenu*)getChildByTag(TAG_MENU);
-    if(!menu)
-        return;
-	
-	CCObject* obj;
-	CCARRAY_FOREACH(menu->getChildren(), obj) {
-		CCMenuItemColor* item = (CCMenuItemColor*)obj;
-		if(item->getTag() == START_TAG_LINK_ITEM + index) {
-			obj = (CCObject*)item->getUserData();
-			if(obj) {
-				CC_SAFE_RELEASE(obj);
-			}
-			item->setUserData(func);
-			CC_SAFE_RETAIN(func);
-		}
-	}
+    char buf[64];
+    sprintf(buf, "%d", index);
+    m_linkTargets.setObject(func, buf);
 }
 
 void CCRichLabelTTF::setLinkTargetForAll(CCCallFunc* func) {
-	// if not found, do nothing
-    CCMenu* menu = (CCMenu*)getChildByTag(TAG_MENU);
-    if(!menu)
-        return;
-	
-	CCObject* obj;
-	CCARRAY_FOREACH(menu->getChildren(), obj) {
-		CCMenuItemColor* item = (CCMenuItemColor*)obj;
-		obj = (CCObject*)item->getUserData();
-		if(obj) {
-			CC_SAFE_RELEASE(obj);
-		}
-		item->setUserData(func);
-		CC_SAFE_RETAIN(func);
-	}
+    CC_SAFE_RETAIN(func);
+    CC_SAFE_RELEASE(m_defaultTarget);
+    m_defaultTarget = func;
 }
 
 void CCRichLabelTTF::onLinkMenuItemClicked(CCObject* sender) {
 	CCMenuItemColor* item = (CCMenuItemColor*)sender;
-	CCCallFunc* func = (CCCallFunc*)item->getUserData();
+    int index = item->getTag() - START_TAG_LINK_ITEM;
+    char buf[64];
+    sprintf(buf, "%d", index);
+	CCCallFunc* func = (CCCallFunc*)m_linkTargets.objectForKey(buf);
 	if(func)
 		func->execute();
+    else if(m_defaultTarget)
+        m_defaultTarget->execute();
 }
 
 void CCRichLabelTTF::setLinkPriority(int p) {
@@ -681,6 +747,82 @@ void CCRichLabelTTF::setLinkPriority(int p) {
         return;
 	
 	menu->setTouchPriority(p);
+}
+
+void CCRichLabelTTF::startLoopDisplay(float interval, unsigned int repeat, int delay, CCCallFunc* loopFunc) {
+    // save loop func
+    CC_SAFE_RETAIN(loopFunc);
+    CC_SAFE_RELEASE(m_loopFunc);
+    m_loopFunc = loopFunc;
+    
+    // init state, because we can't display one char, so at the beginning we hide it
+    setVisible(false);
+    m_toCharIndex = 0;
+    m_repeat = repeat;
+    
+    // schedule update
+    schedule(schedule_selector(CCRichLabelTTF::displayNextChar), interval, kCCRepeatForever, delay);
+}
+
+void CCRichLabelTTF::stopLoopDisplay() {
+    // unschedule
+    unschedule(schedule_selector(CCRichLabelTTF::displayNextChar));
+    
+    // reset
+    setVisible(true);
+    setDisplayTo(-1);
+    
+    // release
+    CC_SAFE_RELEASE_NULL(m_loopFunc);
+}
+
+void CCRichLabelTTF::displayNextChar(float delta) {
+    // display next
+    if(m_toCharIndex < m_realLength) {
+        if(m_toCharIndex == -1) {
+            m_toCharIndex++;
+            setVisible(false);
+        } else if(m_toCharIndex == 0) {
+            setVisible(true);
+            setDisplayTo(m_toCharIndex + 1);
+        } else {
+            setDisplayTo(m_toCharIndex + 1);
+        }
+    }
+    
+    // check complete
+    if(m_toCharIndex >= m_realLength) {
+        // callback
+        if(m_loopFunc)
+            m_loopFunc->execute();
+        
+        // if repeat, reset
+        // if not, restore state and release callback
+        if(m_repeat == kCCRepeatForever || m_repeat > 0) {
+            m_repeat--;
+            m_toCharIndex = -1;
+        } else {
+            unschedule(schedule_selector(CCRichLabelTTF::displayNextChar));
+            setDisplayTo(-1);
+            CC_SAFE_RELEASE_NULL(m_loopFunc);
+        }
+    }
+}
+
+void CCRichLabelTTF::setDisplayTo(int to) {
+    if (m_toCharIndex != to) {
+        m_toCharIndex = to;
+        
+        // Force update
+        if (m_string.size() > 0) {
+            updateTexture();
+        }
+    }
+}
+
+void CCRichLabelTTF::update(float delta) {
+    m_elapsed += delta;
+    updateTexture();
 }
 
 NS_CC_END

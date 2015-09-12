@@ -16,6 +16,8 @@ static TestScene* CreateTestScene(int nIdx)
     {
         case TEST_COMMON:
             pScene = new CommonTestScene(); break;
+        case TEST_ACTION:
+            pScene = new ActionTestScene(); break;
         case TEST_ANIM:
             pScene = new AnimTestScene(); break;
         case TEST_DB:
@@ -24,6 +26,10 @@ static TestScene* CreateTestScene(int nIdx)
             pScene = new JSONTestScene(); break;
 		case TEST_NETWORK:
 			pScene = new NetworkTestScene(); break;
+        case TEST_STORY:
+            pScene = new StoryTestScene(); break;
+		case TEST_TMX:
+			pScene = new TMXTestScene(); break;
         default:
             break;
     }

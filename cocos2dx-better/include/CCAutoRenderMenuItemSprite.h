@@ -39,7 +39,15 @@ private:
 	bool m_focus;
 	
 	/// focus image
-	CCSprite* m_focusImage;
+	CCNode* m_focusImage;
+    
+    /// selector of selected event
+    CCObject* m_selectedEventTarget;
+    SEL_MenuHandler m_selectedEventSelector;
+    
+    /// selector of unselected event
+    CCObject* m_unselectedEventTarget;
+    SEL_MenuHandler m_unselectedEventSelector;
 	
 protected:
 	/// @see CCMenuItemSprite::updateImagesVisibility
@@ -56,7 +64,7 @@ public:
 	 * @param target target
 	 * @param selector selector
 	 */
-	static CCAutoRenderMenuItemSprite* create(CCSprite* sprite, CCObject* target, SEL_MenuHandler selector);
+	static CCAutoRenderMenuItemSprite* create(CCNode* sprite, CCObject* target, SEL_MenuHandler selector);
 	
     /**
 	 * create a menu item without selector bounded
@@ -64,7 +72,7 @@ public:
 	 * @param normalImage normal state
 	 * @param focusImage focus state
 	 */
-    static CCAutoRenderMenuItemSprite* create(CCSprite* normalImage, CCSprite* focusImage);
+    static CCAutoRenderMenuItemSprite* create(CCNode* normalImage, CCNode* focusImage);
                                               
 	/**
 	 * create a menu item
@@ -74,7 +82,7 @@ public:
 	 * @param target target
 	 * @param selector selector
 	 */
-	static CCAutoRenderMenuItemSprite* create(CCSprite* normalImage, CCSprite* focusImage, CCObject* target, SEL_MenuHandler selector);
+	static CCAutoRenderMenuItemSprite* create(CCNode* normalImage, CCNode* focusImage, CCObject* target, SEL_MenuHandler selector);
 	
 	/**
 	 * create a menu item
@@ -85,8 +93,8 @@ public:
 	 * @param target target
 	 * @param selector selector
 	 */
-	static CCAutoRenderMenuItemSprite* create(CCSprite* normalImage, CCSprite* selectedImage,
-											  CCSprite* focusImage, CCObject* target, SEL_MenuHandler selector);
+	static CCAutoRenderMenuItemSprite* create(CCNode* normalImage, CCNode* selectedImage,
+											  CCNode* focusImage, CCObject* target, SEL_MenuHandler selector);
 	
 	/**
 	 * create a menu item
@@ -98,8 +106,14 @@ public:
 	 * @param target target
 	 * @param selector selector
 	 */
-	static CCAutoRenderMenuItemSprite* create(CCSprite* normalImage, CCSprite* selectedImage, CCSprite* disabledImage,
-											  CCSprite* focusImage, CCObject* target, SEL_MenuHandler selector);
+	static CCAutoRenderMenuItemSprite* create(CCNode* normalImage, CCNode* selectedImage, CCNode* disabledImage,
+											  CCNode* focusImage, CCObject* target, SEL_MenuHandler selector);
+    
+    /// set target selector of selected event
+    void setSelectedEvent(CCObject* target, SEL_MenuHandler selector);
+    
+    /// set target selector of unselected event
+    void setUnselectedEvent(CCObject* target, SEL_MenuHandler selector);
 	
 	/// @see CCMenuItemSprite::selected
 	virtual void selected();
@@ -114,10 +128,10 @@ public:
 	bool isFocus() { return m_focus; }
 	
 	/// set focus image
-	void setFocusImage(CCSprite* focusImage);
+	void setFocusImage(CCNode* focusImage);
 	
 	/// get focus image
-	CCSprite* getFocusImage() { return m_focusImage; }
+	CCNode* getFocusImage() { return m_focusImage; }
     
     /// make every state image center aligned
     void centerAlignImages();

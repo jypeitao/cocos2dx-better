@@ -78,9 +78,6 @@ bool CCDatabase::open(int flags) {
 			CCLOGERROR("failed to create containing directory for database");
 			return false;
 		}
-		
-		// map to platform
-		path = CCUtils::mapLocalPath(path);
 	}
 	
 	// create database
@@ -166,7 +163,7 @@ void CCDatabase::clearCachedStatements() {
 
 bool CCDatabase::databaseOpened() {
     if (!m_db) {
-        CCLOGWARN("The CCDatabase %d is not open.", this);
+        CCLOGWARN("The CCDatabase %p is not open.", this);
         return false;
     }
 
@@ -424,7 +421,7 @@ void CCDatabase::postResultSetClosed(CCResultSet* rs) {
 }
 
 void CCDatabase::warnInUse() {
-    CCLOGWARN("The CCDatabase %d is currently in use.", this);
+    CCLOGWARN("The CCDatabase %p is currently in use.", this);
 }
 
 string CCDatabase::lastErrorMessage() {
@@ -754,7 +751,7 @@ bool CCDatabase::columnExists(string tableName, string columnName) {
     return existent;
 }
 
-bool CCDatabase::executeSQL(string path, CCResourceLoader::DECRYPT_FUNC func) {
+bool CCDatabase::executeSQL(string path, CC_DECRYPT_FUNC func) {
     unsigned long len;
     unsigned char* raw = CCResourceLoader::loadRaw(path, &len, func);
 	bool ret = executeSQL(raw, len);

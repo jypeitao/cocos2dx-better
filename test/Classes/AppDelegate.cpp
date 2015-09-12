@@ -23,22 +23,18 @@ bool AppDelegate::applicationDidFinishLaunching()
 
     CCSize screenSize = CCEGLView::sharedOpenGLView()->getFrameSize();
 
-    CCSize designSize = CCSizeMake(480, 320);
-    CCFileUtils* pFileUtils = CCFileUtils::sharedFileUtils();
-    
-    if (screenSize.height > 320)
-    {
-        CCSize resourceSize = CCSizeMake(960, 640);
-        std::vector<std::string> searchPaths;
-        searchPaths.push_back("hd");
-        pFileUtils->setSearchPaths(searchPaths);
-        pDirector->setContentScaleFactor(resourceSize.height/designSize.height);
-    }
-
+    CCSize designSize = CCSizeMake(720, 480);
     CCEGLView::sharedOpenGLView()->setDesignResolutionSize(designSize.width, designSize.height, kResolutionNoBorder);
-
+//	CCDirector::sharedDirector()->setContentScaleFactor(1.5f);
+	
     // set FPS. the default value is 1.0/60 if you don't call this
     pDirector->setAnimationInterval(1.0 / 60);
+    
+    // search path
+    vector<string> searchPath;
+    searchPath.push_back("Files");
+    searchPath.push_back("Images");
+    CCFileUtils::sharedFileUtils()->setSearchPaths(searchPath);
 
     CCScene * pScene = CCScene::create();
     CCLayer * pLayer = new TestController();

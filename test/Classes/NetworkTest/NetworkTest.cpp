@@ -3,10 +3,14 @@
 #include "cocos2d.h"
 #include "cocos2d-better.h"
 
+TESTLAYER_CREATE_FUNC(NetworkFileDownloader);
+TESTLAYER_CREATE_FUNC(NetworkHttpGet);
 TESTLAYER_CREATE_FUNC(NetworkTCP);
 TESTLAYER_CREATE_FUNC(NetworkUDP);
 
 static NEWTESTFUNC createFunctions[] = {
+    CF(NetworkFileDownloader),
+    CF(NetworkHttpGet),
     CF(NetworkTCP),
 	CF(NetworkUDP)
 };
@@ -133,9 +137,172 @@ void NetworkDemo::backCallback(CCObject* pSender)
 
 //------------------------------------------------------------------
 //
+// File Downloader
+//
+//------------------------------------------------------------------
+NetworkFileDownloader::~NetworkFileDownloader() {
+    CCFileDownloader::purge();
+}
+
+void NetworkFileDownloader::onEnter()
+{
+    NetworkDemo::onEnter();
+    
+    CCSize visibleSize = CCDirector::sharedDirector()->getVisibleSize();
+	CCPoint origin = CCDirector::sharedDirector()->getVisibleOrigin();
+    
+    // file name
+    m_fileLabel = CCLabelTTF::create("Current file", "Helvetica", 36 / CC_CONTENT_SCALE_FACTOR());
+    m_fileLabel->setPosition(ccp(origin.x + visibleSize.width / 2,
+                             origin.y + visibleSize.height / 2 + 40 / CC_CONTENT_SCALE_FACTOR()));
+    addChild(m_fileLabel);
+    
+    // label
+    m_label = CCLabelTTF::create("Getting", "Helvetica", 30 / CC_CONTENT_SCALE_FACTOR());
+    m_label->setPosition(ccp(origin.x + visibleSize.width / 2,
+                             origin.y + visibleSize.height / 2));
+    addChild(m_label);
+    
+    // start request in asynchronous mode
+    CCFileDownloader* d = CCFileDownloader::getInstance();
+    d->addFile("http://mirrors.cnnic.cn/apache/ant/binaries/RELEASE-NOTES-1.2"); // small file
+    d->addFile("http://mirrors.cnnic.cn/apache/ant/binaries/apache-ant-1.9.1-bin.zip"); // not exist, 0 size
+    d->addFile("http://mirrors.cnnic.cn/apache/ant/binaries/apache-ant-1.9.3-bin.zip"); // 8 mega bytes
+    d->start();
+    
+    // update
+    scheduleUpdate();
+}
+
+void NetworkFileDownloader::onExit() {
+    NetworkDemo::onEnter();
+}
+
+std::string NetworkFileDownloader::subtitle() {
+    return "File Downloader";
+}
+
+void NetworkFileDownloader::update(float delta) {
+    CCFileDownloader* d = CCFileDownloader::getInstance();
+    if(d->isDownloading()) {
+        m_fileLabel->setString(d->getCurrentDownloadingFileName().c_str());
+        char buf[64];
+        sprintf(buf, "%ld/%ld", d->getCurrentDownloadedSize(), d->getCurrentDownloadingFileSize());
+        m_label->setString(buf);
+    } else {
+        m_fileLabel->setString("Done");
+        m_label->setString("");
+    }
+}
+
+//------------------------------------------------------------------
+//
+// Http Client - Get
+//
+//------------------------------------------------------------------
+NetworkHttpGet::~NetworkHttpGet() {
+    CC_SAFE_RELEASE(m_client);
+}
+
+void NetworkHttpGet::onEnter()
+{
+    NetworkDemo::onEnter();
+    
+    CCSize visibleSize = CCDirector::sharedDirector()->getVisibleSize();
+	CCPoint origin = CCDirector::sharedDirector()->getVisibleOrigin();
+    
+    // label
+    m_label = CCLabelTTF::create("Getting", "Helvetica", 36 / CC_CONTENT_SCALE_FACTOR());
+    m_label->setPosition(ccp(origin.x + visibleSize.width / 2,
+                             origin.y + visibleSize.height / 2));
+    addChild(m_label);
+    
+    // cancel
+	CCMenuItemLabel* item1 = CCMenuItemLabel::create(CCLabelTTF::create("Cancel", "Helvetica", 40 / CC_CONTENT_SCALE_FACTOR()),
+													 this,
+													 menu_selector(NetworkHttpGet::onCancelClicked));
+	item1->setPosition(origin.x + visibleSize.width / 2,
+                       origin.y + visibleSize.height / 2 - 60 / CC_CONTENT_SCALE_FACTOR());
+	CCMenu* menu = CCMenu::create(item1, NULL);
+	menu->setAnchorPoint(CCPointZero);
+	menu->setPosition(CCPointZero);
+	addChild(menu);
+    
+    // start request in asynchronous mode
+    CBHttpClient* client = CBHttpClient::create();
+    CBHttpRequest* req = CBHttpRequest::create();
+    req->setTag(1);
+    req->setUrl("http://mirrors.cnnic.cn/apache//ant/binaries/apache-ant-1.9.3-bin.zip");
+    req->setMethod(CBHttpRequest::kHttpGet);
+    client->asyncExecute(req);
+    m_client = client;
+    CC_SAFE_RETAIN(m_client);
+    
+    // listener
+    CCNotificationCenter::sharedNotificationCenter()->addObserver(this, callfuncO_selector(NetworkHttpGet::onHttpDone), kCCNotificationHttpRequestCompleted, NULL);
+    CCNotificationCenter::sharedNotificationCenter()->addObserver(this, callfuncO_selector(NetworkHttpGet::onHttpData), kCCNotificationHttpDataReceived, NULL);
+    CCNotificationCenter::sharedNotificationCenter()->addObserver(this, callfuncO_selector(NetworkHttpGet::onHttpHeaders), kCCNotificationHttpDidReceiveResponse, NULL);
+}
+
+void NetworkHttpGet::onExit() {
+    NetworkDemo::onEnter();
+    
+    // remove listener
+    CCNotificationCenter::sharedNotificationCenter()->removeObserver(this, kCCNotificationHttpRequestCompleted);
+    CCNotificationCenter::sharedNotificationCenter()->removeObserver(this, kCCNotificationHttpDataReceived);
+    CCNotificationCenter::sharedNotificationCenter()->removeObserver(this, kCCNotificationHttpDidReceiveResponse);
+}
+
+void NetworkHttpGet::onCancelClicked(CCObject* sender) {
+    m_client->cancel(1);
+}
+
+std::string NetworkHttpGet::subtitle() {
+    return "Http Client - Get";
+}
+
+void NetworkHttpGet::onHttpHeaders(CBHttpResponse* response) {
+    string contentLength = response->getHeader("Content-Length");
+    m_fileLen = atoi(contentLength.c_str());
+    m_recvLen = 0;
+    CCLOG("file length is %d", m_fileLen);
+    
+    char buf[64];
+    sprintf(buf, "%d/%d", m_recvLen, m_fileLen);
+    m_label->setString(buf);
+}
+
+void NetworkHttpGet::onHttpData(CBHttpResponse* response) {
+    m_recvLen += response->getData()->getSize();
+    char buf[64];
+    sprintf(buf, "%d/%d", m_recvLen, m_fileLen);
+    m_label->setString(buf);
+}
+
+void NetworkHttpGet::onHttpDone(CBHttpResponse* response) {
+    char buf[128];
+    sprintf(buf, "done, success: %s", response->isSuccess() ? "true" : "false");
+    m_label->setString(buf);
+}
+
+//------------------------------------------------------------------
+//
 // TCP Socket
 //
 //------------------------------------------------------------------
+NetworkTCP::~NetworkTCP() {
+    m_hub->stopAll();
+}
+
+void NetworkTCP::onExit() {
+    NetworkDemo::onExit();
+    
+    CCNotificationCenter* nc = CCNotificationCenter::sharedNotificationCenter();
+    nc->removeObserver(this, kCCNotificationTCPSocketConnected);
+    nc->removeObserver(this, kCCNotificationTCPSocketDisconnected);
+    nc->removeObserver(this, kCCNotificationPacketReceived);
+}
+
 void NetworkTCP::onEnter()
 {
     NetworkDemo::onEnter();
@@ -160,34 +327,39 @@ void NetworkTCP::onEnter()
 	m_recv->setPosition(ccp(origin.x + visibleSize.width / 2,
 							origin.y + visibleSize.height / 5));
 	addChild(m_recv);
+    
+    // notification observer
+    CCNotificationCenter* nc = CCNotificationCenter::sharedNotificationCenter();
+    nc->addObserver(this, callfuncO_selector(NetworkTCP::onTCPSocketConnected), kCCNotificationTCPSocketConnected, NULL);
+    nc->addObserver(this, callfuncO_selector(NetworkTCP::onTCPSocketDisonnected), kCCNotificationTCPSocketDisconnected, NULL);
+    nc->addObserver(this, callfuncO_selector(NetworkTCP::onPacketReceived), kCCNotificationPacketReceived, NULL);
 	
 	// change ip to your server
 	// registerCallback must be invoked before createSocket otherwise connect event is lost
 	m_hub = CCTCPSocketHub::create();
-	m_hub->registerCallback(1, this);
-	m_hub->createSocket("192.168.1.104", 6000, 1);
-	addChild(m_hub);
+    m_hub->setRawPolicy(true);
+	m_hub->createSocket("172.16.96.60", 6000, 1);
 }
 
 void NetworkTCP::onSendClicked(CCObject* sender) {
 	static int index = 0;
 	char buf[32];
-	sprintf(buf, "Hello: %d", index++);
-	CCByteBuffer packet;
-	packet.writeLine(buf);
-	m_hub->sendPacket(1, &packet);
+	sprintf(buf, "Hello: %d\r\n", index++);
+	CCPacket* p = CCPacket::createRawPacket(buf, strlen(buf));
+	m_hub->sendPacket(1, p);
 }
 
-void NetworkTCP::onTCPSocketConnected(int tag) {
-	CCLOG("connected: %d", tag);
+void NetworkTCP::onTCPSocketConnected(CCTCPSocket* s) {
+    CCLOG("connected: %d", s->getTag());
 }
 
-void NetworkTCP::onTCPSocketDisconnected(int tag) {
-	CCLOG("disconnected: %d", tag);
+void NetworkTCP::onTCPSocketDisonnected(CCTCPSocket* s) {
+    CCLOG("disconnected: %d", s->getTag());
 }
 
-void NetworkTCP::onTCPSocketData(int tag, CCByteBuffer& bb) {
-	string ret;
+void NetworkTCP::onPacketReceived(CCPacket* p) {
+    string ret;
+    CCByteBuffer bb(p->getBuffer(), p->getPacketLength(), p->getPacketLength());
 	bb.readLine(ret);
 	if(!ret.empty()) {
 		char buf[65535];
@@ -206,6 +378,10 @@ std::string NetworkTCP::subtitle()
 // UDP Socket
 //
 //------------------------------------------------------------------
+NetworkUDP::~NetworkUDP() {
+    m_hub->stopAll();
+}
+
 void NetworkUDP::onEnter()
 {
     NetworkDemo::onEnter();
@@ -231,33 +407,39 @@ void NetworkUDP::onEnter()
 							origin.y + visibleSize.height / 5));
 	addChild(m_recv);
 	
+    // notification observer
+    CCNotificationCenter* nc = CCNotificationCenter::sharedNotificationCenter();
+    nc->addObserver(this, callfuncO_selector(NetworkUDP::onUDPSocketConnected), kCCNotificationUDPSocketConnected, NULL);
+    nc->addObserver(this, callfuncO_selector(NetworkUDP::onUDPSocketDisonnected), kCCNotificationUDPSocketDisconnected, NULL);
+    nc->addObserver(this, callfuncO_selector(NetworkUDP::onPacketReceived), kCCNotificationPacketReceived, NULL);
+    
 	// change ip to your server
 	// registerCallback must be invoked before createSocket otherwise bound event is lost
 	m_hub = CCUDPSocketHub::create();
-	m_hub->registerCallback(1, this);
-	m_hub->createSocket("192.168.1.104", 9000, 1);
-	addChild(m_hub);
+    m_hub->setRawPolicy(true);
+	m_hub->createSocket("192.168.1.106", 9000, 1);
 }
 
-void NetworkUDP::onSendClicked(CCObject* sender) {
-	static int index = 0;
-	char buf[32];
-	sprintf(buf, "Hello: %d", index++);
-	CCByteBuffer packet;
-	packet.writeLine(buf);
-	m_hub->sendPacket(1, &packet);
+void NetworkUDP::onExit() {
+    NetworkDemo::onExit();
+    
+    CCNotificationCenter* nc = CCNotificationCenter::sharedNotificationCenter();
+    nc->removeObserver(this, kCCNotificationUDPSocketConnected);
+    nc->removeObserver(this, kCCNotificationUDPSocketDisconnected);
+    nc->removeObserver(this, kCCNotificationPacketReceived);
 }
 
-void NetworkUDP::onUDPSocketBound(int tag) {
-	CCLOG("bound: %d", tag);
+void NetworkUDP::onUDPSocketConnected(CCUDPSocket* s) {
+    CCLOG("bound: %d", s->getTag());
 }
 
-void NetworkUDP::onUDPSocketClosed(int tag) {
-	CCLOG("closed: %d", tag);
+void NetworkUDP::onUDPSocketDisonnected(CCUDPSocket* s) {
+    CCLOG("closed: %d", s->getTag());
 }
 
-void NetworkUDP::onUDPSocketData(int tag, CCByteBuffer& bb) {
-	string ret;
+void NetworkUDP::onPacketReceived(CCPacket* p) {
+    string ret;
+    CCByteBuffer bb(p->getBuffer(), p->getPacketLength(), p->getPacketLength());
 	bb.readLine(ret);
 	if(!ret.empty()) {
 		char buf[65535];
@@ -266,7 +448,14 @@ void NetworkUDP::onUDPSocketData(int tag, CCByteBuffer& bb) {
 	}
 }
 
-std::string NetworkUDP::subtitle()
-{
+void NetworkUDP::onSendClicked(CCObject* sender) {
+	static int index = 0;
+	char buf[32];
+	sprintf(buf, "Hello: %d\r\n", index++);
+	CCPacket* p = CCPacket::createRawPacket(buf, strlen(buf));
+	m_hub->sendPacket(1, p);
+}
+
+std::string NetworkUDP::subtitle() {
     return "UDP Socket";
 }

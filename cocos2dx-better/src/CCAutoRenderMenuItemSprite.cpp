@@ -29,20 +29,24 @@ NS_CC_BEGIN
 CCAutoRenderMenuItemSprite::CCAutoRenderMenuItemSprite() :
 m_focus(false),
 m_focusIsAttachment(false),
-m_focusImage(NULL) {
+m_focusImage(NULL),
+m_selectedEventTarget(NULL),
+m_selectedEventSelector(NULL),
+m_unselectedEventTarget(NULL),
+m_unselectedEventSelector(NULL) {
 }
 
 CCAutoRenderMenuItemSprite::~CCAutoRenderMenuItemSprite() {
 }
 
-CCAutoRenderMenuItemSprite* CCAutoRenderMenuItemSprite::create(CCSprite* sprite, CCObject* target, SEL_MenuHandler selector) {
+CCAutoRenderMenuItemSprite* CCAutoRenderMenuItemSprite::create(CCNode* sprite, CCObject* target, SEL_MenuHandler selector) {
 	CCAutoRenderMenuItemSprite* pRet = new CCAutoRenderMenuItemSprite();
     pRet->initWithNormalSprite(sprite, NULL, NULL, target, selector);
     pRet->autorelease();
     return pRet;
 }
 
-CCAutoRenderMenuItemSprite* CCAutoRenderMenuItemSprite::create(CCSprite* normalImage, CCSprite* focusImage) {
+CCAutoRenderMenuItemSprite* CCAutoRenderMenuItemSprite::create(CCNode* normalImage, CCNode* focusImage) {
     CCAutoRenderMenuItemSprite* pRet = new CCAutoRenderMenuItemSprite();
     pRet->initWithNormalSprite(normalImage, NULL, NULL, NULL, NULL);
     pRet->setFocusImage(focusImage);
@@ -50,7 +54,7 @@ CCAutoRenderMenuItemSprite* CCAutoRenderMenuItemSprite::create(CCSprite* normalI
     return pRet;
 }
 
-CCAutoRenderMenuItemSprite* CCAutoRenderMenuItemSprite::create(CCSprite* normalImage, CCSprite* focusImage, CCObject* target, SEL_MenuHandler selector) {
+CCAutoRenderMenuItemSprite* CCAutoRenderMenuItemSprite::create(CCNode* normalImage, CCNode* focusImage, CCObject* target, SEL_MenuHandler selector) {
 	CCAutoRenderMenuItemSprite* pRet = new CCAutoRenderMenuItemSprite();
     pRet->initWithNormalSprite(normalImage, NULL, NULL, target, selector);
 	pRet->setFocusImage(focusImage);
@@ -58,8 +62,8 @@ CCAutoRenderMenuItemSprite* CCAutoRenderMenuItemSprite::create(CCSprite* normalI
     return pRet;
 }
 
-CCAutoRenderMenuItemSprite* CCAutoRenderMenuItemSprite::create(CCSprite* normalImage, CCSprite* selectedImage,
-															   CCSprite* focusImage, CCObject* target, SEL_MenuHandler selector) {
+CCAutoRenderMenuItemSprite* CCAutoRenderMenuItemSprite::create(CCNode* normalImage, CCNode* selectedImage,
+															   CCNode* focusImage, CCObject* target, SEL_MenuHandler selector) {
 	CCAutoRenderMenuItemSprite* pRet = new CCAutoRenderMenuItemSprite();
     pRet->initWithNormalSprite(normalImage, selectedImage, NULL, target, selector);
 	pRet->setFocusImage(focusImage);
@@ -67,13 +71,23 @@ CCAutoRenderMenuItemSprite* CCAutoRenderMenuItemSprite::create(CCSprite* normalI
     return pRet;
 }
 
-CCAutoRenderMenuItemSprite* CCAutoRenderMenuItemSprite::create(CCSprite* normalImage, CCSprite* selectedImage, CCSprite* disabledImage,
-															   CCSprite* focusImage, CCObject* target, SEL_MenuHandler selector) {
+CCAutoRenderMenuItemSprite* CCAutoRenderMenuItemSprite::create(CCNode* normalImage, CCNode* selectedImage, CCNode* disabledImage,
+															   CCNode* focusImage, CCObject* target, SEL_MenuHandler selector) {
 	CCAutoRenderMenuItemSprite* pRet = new CCAutoRenderMenuItemSprite();
     pRet->initWithNormalSprite(normalImage, selectedImage, disabledImage, target, selector);
 	pRet->setFocusImage(focusImage);
     pRet->autorelease();
     return pRet;
+}
+
+void CCAutoRenderMenuItemSprite::setSelectedEvent(CCObject* target, SEL_MenuHandler selector) {
+    m_selectedEventTarget = target;
+    m_selectedEventSelector = selector;
+}
+
+void CCAutoRenderMenuItemSprite::setUnselectedEvent(CCObject* target, SEL_MenuHandler selector) {
+    m_unselectedEventTarget = target;
+    m_unselectedEventSelector = selector;
 }
 
 void CCAutoRenderMenuItemSprite::centerAlignImages() {
@@ -123,6 +137,8 @@ void CCAutoRenderMenuItemSprite::centerAlignImages() {
 }
 
 void CCAutoRenderMenuItemSprite::selected() {
+    CCMenuItemSprite::selected();
+    updateImagesVisibility();
 	CCMenuItemSprite::selected();
 	
 	// set a darker color
@@ -133,15 +149,26 @@ void CCAutoRenderMenuItemSprite::selected() {
 		ccColor3B c = CCUtils::hsv2ccc3(hsv);
 		setColor(c);
 	}
+    
+    // event
+    if (m_selectedEventTarget && m_selectedEventSelector) {
+        (m_selectedEventTarget->*m_selectedEventSelector)(this);
+    }
 }
 
 void CCAutoRenderMenuItemSprite::unselected() {
-	CCMenuItemSprite::unselected();
+    CCMenuItemSprite::unselected();
+    updateImagesVisibility();
 	
 	// restore old color
 	if(!getSelectedImage()) {
 		setColor(m_oldColor);
 	}
+    
+    // event
+    if (m_unselectedEventTarget && m_unselectedEventSelector) {
+        (m_unselectedEventTarget->*m_unselectedEventSelector)(this);
+    }
 }
 
 void CCAutoRenderMenuItemSprite::updateImagesVisibility() {
@@ -155,12 +182,13 @@ void CCAutoRenderMenuItemSprite::updateImagesVisibility() {
 		m_focusImage->setVisible(false);
 	
 	if(m_focusImage) {
-		m_focusImage->setVisible(m_focus);
-		if(!m_focus || m_focusIsAttachment)
-			CCMenuItemSprite::updateImagesVisibility();
-	} else {
-		CCMenuItemSprite::updateImagesVisibility();
+        if(m_focusIsAttachment) {
+            m_focusImage->setVisible(m_focus || isSelected());
+        } else {
+            m_focusImage->setVisible(m_focus);
+        }
 	}
+    CCMenuItemSprite::updateImagesVisibility();
 }
 
 void CCAutoRenderMenuItemSprite::setFocus(bool flag) {
@@ -168,7 +196,7 @@ void CCAutoRenderMenuItemSprite::setFocus(bool flag) {
 	updateImagesVisibility();
 }
 
-void CCAutoRenderMenuItemSprite::setFocusImage(CCSprite* focusImage) {
+void CCAutoRenderMenuItemSprite::setFocusImage(CCNode* focusImage) {
 	if (focusImage != m_focusImage) {
         if (focusImage) {
             addChild(focusImage, 0);

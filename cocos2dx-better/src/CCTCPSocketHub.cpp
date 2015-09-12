@@ -25,142 +25,159 @@
 
 NS_CC_BEGIN
 
-CCTCPSocketHub::CCTCPSocketHub() {
-	scheduleUpdate();
-};
+static CC_MULTI_ENCRYPT_FUNC sEncryptFunc = NULL;
+static CC_MULTI_DECRYPT_FUNC sDecryptFunc = NULL;
 
-CCTCPSocketHub::~CCTCPSocketHub() {
-	CCScheduler* s = CCDirector::sharedDirector()->getScheduler();
-	s->unscheduleUpdateForTarget(this);
-	
-	for (CCTCPSocketList::iterator iter = m_lstSocket.begin(); iter != m_lstSocket.end(); ++iter) {
-		int tag = (*iter)->getTag();
-		CC_SAFE_RELEASE(*iter);
-		CCTCPSocketListener* l = getListener(tag);
-		if(l) {
-			l->onTCPSocketDisconnected(tag);
-		}
-	}
+CCTCPSocketHub::CCTCPSocketHub() :
+m_rawPolicy(false) {
+    pthread_mutex_init(&m_mutex, NULL);
+    
+    // start main loop
+    CCScheduler* s = CCDirector::sharedDirector()->getScheduler();
+    s->scheduleSelector(schedule_selector(CCTCPSocketHub::mainLoop), this, 0, false);
 }
 
-CCTCPSocketHub* CCTCPSocketHub::create() {
+CCTCPSocketHub::~CCTCPSocketHub() {
+    // release
+    pthread_mutex_destroy(&m_mutex);
+}
+
+CCTCPSocketHub* CCTCPSocketHub::create(CC_MULTI_ENCRYPT_FUNC encryptFunc, CC_MULTI_DECRYPT_FUNC decryptFunc) {
 	CCTCPSocketHub* h = new CCTCPSocketHub();
+    sEncryptFunc = encryptFunc;
+    sDecryptFunc = decryptFunc;
 	return (CCTCPSocketHub*)h->autorelease();
+}
+
+CC_MULTI_ENCRYPT_FUNC CCTCPSocketHub::getEncryptFunc() {
+    return sEncryptFunc;
+}
+
+CC_MULTI_DECRYPT_FUNC CCTCPSocketHub::getDecryptFunc() {
+    return sDecryptFunc;
+}
+
+void CCTCPSocketHub::stopAll() {
+    // release socket
+    CCObject* obj;
+    CCARRAY_FOREACH(&m_sockets, obj) {
+        CCTCPSocket* s = (CCTCPSocket*)obj;
+        if(s->isConnected()) {
+            s->m_connected = false;
+            s->closeSocket();
+            CCNotificationCenter::sharedNotificationCenter()->postNotification(kCCNotificationTCPSocketDisconnected, s);
+        }
+        s->setStop(true);
+        s->setHub(NULL);
+    }
+    m_sockets.removeAllObjects();
+    
+    // stop update
+    CCScheduler* s = CCDirector::sharedDirector()->getScheduler();
+	s->unscheduleSelector(schedule_selector(CCTCPSocketHub::mainLoop), this);
 }
 
 CCTCPSocket* CCTCPSocketHub::createSocket(const string& hostname, int port, int tag, int blockSec, bool keepAlive) {
 	CCTCPSocket* s = CCTCPSocket::create(hostname, port, tag, blockSec, keepAlive);
-	if (s && addSocket(s) && s->isConnected()) {
-		CCTCPSocketListener* l = getListener(tag);
-		if(l) {
-			l->onTCPSocketConnected(tag);
-		}
-	}
-	
+	if(s)
+        addSocket(s);
 	return s;
 }
 
-CCTCPSocketListener* CCTCPSocketHub::getListener(int tag) {
-	CCTCPSocketListenerMap::iterator iter = m_listenerMap.find(tag);
-	if(iter != m_listenerMap.end()) {
-		return iter->second;
-	} else {
-		return NULL;
-	}
+void CCTCPSocketHub::onSocketConnectedThreadSafe(CCTCPSocket* s) {
+    pthread_mutex_lock(&m_mutex);
+    m_connectedSockets.addObject(s);
+    pthread_mutex_unlock(&m_mutex);
+}
+
+void CCTCPSocketHub::onSocketDisconnectedThreadSafe(CCTCPSocket* s) {
+    pthread_mutex_lock(&m_mutex);
+    m_disconnectedSockets.addObject(s);
+    pthread_mutex_unlock(&m_mutex);
+}
+
+void CCTCPSocketHub::onPacketReceivedThreadSafe(CCPacket* packet) {
+    pthread_mutex_lock(&m_mutex);
+    m_packets.addObject(packet);
+    pthread_mutex_unlock(&m_mutex);
 }
 
 bool CCTCPSocketHub::addSocket(CCTCPSocket* socket) {
-	for(CCTCPSocketList::iterator iter = m_lstSocket.begin(); iter != m_lstSocket.end(); ++ iter) {
-		if((*iter)->getSocket() == socket->getSocket())
-			return false;
-	}
-	m_lstSocket.push_back(socket);
-	CC_SAFE_RETAIN(socket);
+    CCObject* obj;
+    CCARRAY_FOREACH(&m_sockets, obj) {
+        CCTCPSocket* s = (CCTCPSocket*)obj;
+        if(s->getSocket() == socket->getSocket()) {
+            return false;
+        }
+    }
+    m_sockets.addObject(socket);
+    socket->setHub(this);
 	return true;
 }
 
-bool CCTCPSocketHub::removeSocket(int tag) {
-	for(CCTCPSocketList::iterator iter = m_lstSocket.begin(); iter != m_lstSocket.end(); ++ iter) {
-		if((*iter)->getTag() == tag) {
-			CC_SAFE_RELEASE(*iter);
-			m_lstSocket.erase(iter);
-			return true;
-		}
-	}
-	return false;
-}
-
 CCTCPSocket* CCTCPSocketHub::getSocket(int tag) {
-	for(CCTCPSocketList::iterator iter = m_lstSocket.begin(); iter != m_lstSocket.end(); ++ iter) {
-		if((*iter)->getTag() == tag) {
-			return *iter;
-		}
-	}
+    CCObject* obj;
+    CCARRAY_FOREACH(&m_sockets, obj) {
+        CCTCPSocket* s = (CCTCPSocket*)obj;
+        if(s->getTag() == tag) {
+            return s;
+        }
+    }
 	return NULL;
 }
 
-void CCTCPSocketHub::update(float delta) {
-	for(CCTCPSocketList::iterator iter = m_lstSocket.begin(); iter != m_lstSocket.end(); ++ iter) {
-		CCTCPSocket* pSocket = *iter;
-		int tag = pSocket->getTag();
-		if (!pSocket->hasAvailable()) {
-			if(pSocket->isConnected()) {
-				pSocket->setConnected(false);
-				CCTCPSocketListener* l = getListener(tag);
-				if(l)
-					l->onTCPSocketDisconnected(tag);
-			}
-			CC_SAFE_RELEASE(*iter);
-			m_lstSocket.erase(iter);
-			break;
-		} else if(!pSocket->isConnected()) {
-			pSocket->setConnected(true);
-			CCTCPSocketListener* l = getListener(tag);
-			if(l)
-				l->onTCPSocketConnected(tag);
-		}
-		
-		while (true) {
-			int read = pSocket->receiveData(m_buffer, kCCSocketMaxPacketSize);
-			if (read <= 0)
-				break;
-			CCByteBuffer packet;
-			packet.write((uint8*)m_buffer, read);
-			
-			CCTCPSocketListener* l = getListener(tag);
-			if(l) {
-				l->onTCPSocketData(tag, packet);
-			}
-		}
-	}
+void CCTCPSocketHub::mainLoop(float delta) {
+    pthread_mutex_lock(&m_mutex);
+    
+    // notification center
+    CCNotificationCenter* nc = CCNotificationCenter::sharedNotificationCenter();
+    
+    // connected events
+    CCObject* obj;
+    CCARRAY_FOREACH(&m_connectedSockets, obj) {
+        CCTCPSocket* s = (CCTCPSocket*)obj;
+        nc->postNotification(kCCNotificationTCPSocketConnected, s);
+    }
+    m_connectedSockets.removeAllObjects();
+    
+    // data event
+    CCARRAY_FOREACH(&m_packets, obj) {
+        CCPacket* p = (CCPacket*)obj;
+        nc->postNotification(kCCNotificationPacketReceived, p);
+    }
+    m_packets.removeAllObjects();
+    
+    // disconnected event
+    CCARRAY_FOREACH(&m_disconnectedSockets, obj) {
+        CCTCPSocket* s = (CCTCPSocket*)obj;
+        nc->postNotification(kCCNotificationTCPSocketDisconnected, s);
+        m_sockets.removeObject(s);
+    }
+    m_disconnectedSockets.removeAllObjects();
+    
+    pthread_mutex_unlock(&m_mutex);
 }
 
-void CCTCPSocketHub::registerCallback(int tag, CCTCPSocketListener* callback) {
-	m_listenerMap[tag] = callback;
-}
-
-bool CCTCPSocketHub::sendPacket(int tag, CCByteBuffer* packet) {
-	for(CCTCPSocketList::iterator iter = m_lstSocket.begin(); iter != m_lstSocket.end(); ++ iter) {
-		if ((*iter)->getTag() == tag) {
-			(*iter)->sendData((void*)packet->getBuffer(), packet->available());
-			return (*iter)->flush();
-		}
-	}
-	
-	return false;
+void CCTCPSocketHub::sendPacket(int tag, CCPacket* packet) {
+    CCObject* obj;
+    CCARRAY_FOREACH(&m_sockets, obj) {
+        CCTCPSocket* s = (CCTCPSocket*)obj;
+        if(s->getTag() == tag) {
+            s->sendPacket(packet);
+            break;
+        }
+    }
 }
 
 void CCTCPSocketHub::disconnect(int tag) {
-	for(CCTCPSocketList::iterator iter = m_lstSocket.begin(); iter != m_lstSocket.end(); ++ iter) {
-		if((*iter)->getTag() == tag) {
-			(*iter)->destroy();
-			CCTCPSocketListener* l = getListener(tag);
-			if(l) {
-				l->onTCPSocketDisconnected(tag);
-			}
-			break;
-		}
-	}
+    CCObject* obj;
+    CCARRAY_FOREACH(&m_sockets, obj) {
+        CCTCPSocket* s = (CCTCPSocket*)obj;
+        if(s->getTag() == tag) {
+            s->setStop(true);
+            break;
+        }
+    }
 }
 
 NS_CC_END

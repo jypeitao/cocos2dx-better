@@ -30,6 +30,12 @@ USING_NS_CC;
 
 NS_CC_BEGIN
 
+// general function type
+typedef const char* (*CC_DECRYPT_FUNC)(const char* enc, int encLen, int* plainLen);
+typedef const char* (*CC_ENCRYPT_FUNC)(const char* plain, int plainLen, int* encLen);
+typedef const char* (*CC_MULTI_ENCRYPT_FUNC)(const char* enc, size_t encLen, size_t* plainLen, int algorithm);
+typedef const char* (*CC_MULTI_DECRYPT_FUNC)(const char* plain, size_t plainLen, size_t* encLen, int algorithm);
+
 /// CCPoint constant
 static const CCPoint CCPointCenter = ccp(0.5f, 0.5f);
 
@@ -113,10 +119,40 @@ static inline ccSize ccsz(const float w, const float h) {
 	return s;
 }
 
+// insets
+typedef struct ccInsets {
+	float top;
+	float left;
+	float right;
+	float bottom;
+} ccInsets;
+static const ccInsets cciZero = { 0, 0, 0, 0 };
+static inline ccInsets cci(float t, float l, float r, float b) {
+	ccInsets i = {
+		t, l, r, b
+	};
+	return i;
+}
+
 // rich font definition, support shadow color
 struct ccRichFontDefinition : public ccFontDefinition {
     // font shadow color
     int m_shadowColor;
+    
+    // line spacing
+    float m_lineSpacing;
+    
+    // default image scale factor
+    float m_globalImageScaleFactor;
+    
+    // shown letter to index
+    int m_toCharIndex;
+	
+	// decrypt func for embedded image
+	CC_DECRYPT_FUNC decryptFunc;
+    
+    // elapsed time
+    float m_elapsed;
 };
 
 // color constants
@@ -126,12 +162,16 @@ static const ccColor4B cc4BLUE = { 0, 0, 255, 255 };
 static const ccColor4B cc4BLACK = { 0, 0, 0, 255 };
 static const ccColor4B cc4WHITE = { 255, 255, 255, 255 };
 static const ccColor4B cc4TRANSPARENT = { 0, 0, 0, 0 };
+static const ccColor4B cc4DIM = { 0, 0, 0, 127 };
+static const ccColor4B cc4YELLOW = { 255, 255, 0, 255 };
 static const ccColor4F cc4fRED = { 1, 0, 0, 1 };
 static const ccColor4F cc4fGREEN = { 0, 1, 0, 1 };
 static const ccColor4F cc4fBLUE = { 0, 0, 1, 1 };
 static const ccColor4F cc4fBLACK = { 0, 0, 0, 1 };
 static const ccColor4F cc4fWHITE = { 1, 1, 1, 1 };
 static const ccColor4F cc4fTRANSPARENT = { 0, 0, 0, 0 };
+static const ccColor4F cc4fDIM = { 0, 0, 0, 0.5f };
+static const ccColor4F cc4fYELLOW = { 1, 1, 0, 1 };
 
 /// convert int color 0xaarrggbb to ccColor4B
 static inline ccColor4B ccc4FromInt(int c) {

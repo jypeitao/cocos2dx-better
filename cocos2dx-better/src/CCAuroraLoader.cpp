@@ -75,7 +75,7 @@ CCAuroraFileData* CCAuroraLoader::load(const char* data, size_t length, float re
 
 	// currently we only support version 3
 	if(afd->m_version != BS_VERSION_3) {
-		CCLOGWARN("CCAuroraLoader::load: currently WiEngine only support version 3 BSprite file");
+		CCLOGWARN("CCAuroraLoader::load: currently cocos2dx-better only support version 3 BSprite file");
 		return afd;
 	}
 
@@ -268,8 +268,7 @@ CCAuroraFileData* CCAuroraLoader::load(const char* data, size_t length, float re
 
 CCAuroraFileData* CCAuroraLoader::load(const char* asPath) {
 	unsigned long len;
-	string mappedPath = CCUtils::mapLocalPath(asPath);
-	char* data = (char*)CCFileUtils::sharedFileUtils()->getFileData(mappedPath.c_str(), "rb", &len);
+	char* data = (char*)CCFileUtils::sharedFileUtils()->getFileData(asPath, "rb", &len);
 	CCAuroraFileData* as = load(data, (size_t)len, 1 / CC_CONTENT_SCALE_FACTOR());
 	as->m_path = asPath;
 	free(data);

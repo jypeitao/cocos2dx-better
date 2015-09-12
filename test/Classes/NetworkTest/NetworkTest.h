@@ -7,15 +7,6 @@
 using namespace std;
 USING_NS_CC;
 
-
-enum
-{
-    NETWORK_TCP = 0,
-	NETWORK_UDP,
-    NETWORK_LAYER_COUNT,
-};
-
-
 // the class inherit from TestScene
 // every Scene each test used must inherit from TestScene,
 // make sure the test have the menu item for back to main menu
@@ -39,7 +30,41 @@ public:
     void backCallback(CCObject* pSender);
 };
 
-class NetworkTCP : public NetworkDemo, public CCTCPSocketListener
+class NetworkFileDownloader : public NetworkDemo
+{
+private:
+    CCLabelTTF* m_fileLabel;
+    CCLabelTTF* m_label;
+    
+public:
+    virtual ~NetworkFileDownloader();
+    virtual void onEnter();
+    virtual void onExit();
+    virtual string subtitle();
+    virtual void update(float delta);
+};
+
+class NetworkHttpGet : public NetworkDemo
+{
+private:
+    int m_fileLen;
+    int m_recvLen;
+    CCLabelTTF* m_label;
+    CBHttpClient* m_client;
+    
+public:
+    virtual ~NetworkHttpGet();
+    virtual void onEnter();
+    virtual void onExit();
+    virtual string subtitle();
+    
+    void onHttpDone(CBHttpResponse* response);
+    void onHttpData(CBHttpResponse* response);
+    void onHttpHeaders(CBHttpResponse* response);
+    void onCancelClicked(CCObject* sender);
+};
+
+class NetworkTCP : public NetworkDemo
 {
 private:
 	CCTCPSocketHub* m_hub;
@@ -47,18 +72,18 @@ private:
 	
 private:
 	void onSendClicked(CCObject* sender);
-	
+	void onTCPSocketConnected(CCTCPSocket* s);
+    void onTCPSocketDisonnected(CCTCPSocket* s);
+    void onPacketReceived(CCPacket* p);
+    
 public:
+    virtual ~NetworkTCP();
     virtual void onEnter();
+    virtual void onExit();
     virtual string subtitle();
-
-	// CCTCPSocketListener
-	virtual void onTCPSocketConnected(int tag);
-	virtual void onTCPSocketDisconnected(int tag);
-	virtual void onTCPSocketData(int tag, CCByteBuffer& bb);
 };
 
-class NetworkUDP : public NetworkDemo, public CCUDPSocketListener
+class NetworkUDP : public NetworkDemo
 {
 private:
 	CCUDPSocketHub* m_hub;
@@ -66,15 +91,15 @@ private:
 	
 private:
 	void onSendClicked(CCObject* sender);
-	
+    void onUDPSocketConnected(CCUDPSocket* s);
+    void onUDPSocketDisonnected(CCUDPSocket* s);
+    void onPacketReceived(CCPacket* p);
+    
 public:
+    virtual ~NetworkUDP();
     virtual void onEnter();
+    virtual void onExit();
     virtual string subtitle();
-	
-	// CCUDPSocketListener
-	virtual void onUDPSocketClosed(int tag);
-	virtual void onUDPSocketBound(int tag);
-	virtual void onUDPSocketData(int tag, CCByteBuffer& bb);
 };
 
 #endif
